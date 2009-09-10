@@ -1,0 +1,20 @@
+To build credis-test run: 
+
+  make
+
+to run credis-test type:
+
+  ./credis-test
+
+and hit enter. To perform a simplistic performance benchmark
+test. Measuring number of set commands per second, type:
+
+  ./credis-test 10000
+
+where 10000 is the number of set commands to execute. 
+
+Running the benchmark and a redis srver instance locally on 
+my machine (old dual-core AMD64 and 2 GB RAM running Debian)
+roughly results in 33000 commands/second. Slightly (10-15%) 
+faster than the benchmark provided with the redis server. 
+

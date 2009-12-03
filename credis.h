@@ -76,6 +76,8 @@ typedef struct _cr_redis* REDIS;
  * default port 6379 */
 REDIS credis_connect(char *host, int port, int timeout);
 
+void credis_close(REDIS rhnd);
+
 void credis_quit(REDIS rhnd);
 
 int credis_auth(REDIS rhnd, char *password);

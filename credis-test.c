@@ -58,9 +58,8 @@ long timer(int reset)
 
 int main(int argc, char **argv) {
   REDIS redis = credis_connect(NULL, 0, 2000);
-  int rc, valc;
-  char *val, **valv;
-  char buf[200];
+  char *val;
+  int rc;
 
   if (argc == 2) {
     int i;
@@ -113,4 +112,6 @@ int main(int argc, char **argv) {
   printf("lastsave returned: %d\n", rc);
 
   credis_close(redis);
+
+  return 0;
 }

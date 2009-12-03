@@ -1,15 +1,25 @@
-CFLAGS = -g -O2
-
-# generic build macro
-BUILD_C = $(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -o $@ $^
+CFLAGS = -g -O2 -Wall
+LDFLAGS =
+CPPFLAGS =
 
 # targets to build with 'make all'
-TARGETS = credis-test
+TARGETS = credis-test libcredis.a libcredis.so
 
 all: $(TARGETS)
 
-credis-test: credis-test.o credis.o
-	$(BUILD_C)
+credis-test: credis-test.o libcredis.a
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -o $@ $^
 
+libcredis.a: credis.o
+	$(AR) -cvq $@ $^
+
+libcredis.so: credis.o
+	$(CC) -shared -Wl,-soname,$@ -o $@ $^
+
+credis.o: credis.c credis.h
+	$(CC) -c -fPIC $(CFLAGS) $(CPPFLAGS) -o $@ credis.c
+
+install:
+	@echo "Installing library (to be done)"
 clean:
 	rm -f *.o *~ $(TARGETS)

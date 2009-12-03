@@ -285,7 +285,6 @@ static int cr_receiveerror(REDIS rhnd, char *line)
 static int cr_receivereply(REDIS rhnd, char recvtype) 
 {
   char *line, prefix=0;
-  int rc;
 
   /* reset common send/receive buffer */
   rhnd->buf.len = 0;
@@ -502,7 +501,7 @@ int credis_setnx(REDIS rhnd, char *key, char *val)
 
 static int cr_incr(REDIS rhnd, int incr, int decr, char *key, int *new_val)
 {
-  int rc;
+  int rc = 0;
 
   if (incr == 1 || decr == 1)
     rc = cr_sendfandreceive(rhnd, CR_INT, "%s %s\r\n", 

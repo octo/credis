@@ -32,7 +32,7 @@
 #define __CREDIS_H
 
 /* handle to a Redis server connection */
-typedef void REDIS;
+typedef struct _cr_redis* REDIS;
 
 #define CREDIS_OK 0
 #define CREDIS_ERR -90
@@ -74,90 +74,90 @@ typedef void REDIS;
 
 /* setting host to NULL will use "localhost". setting port to 0 will use 
  * default port 6379 */
-REDIS * credis_connect(char *host, int port, int timeout);
+REDIS credis_connect(char *host, int port, int timeout);
 
-void credis_quit(REDIS *rhnd);
+void credis_quit(REDIS rhnd);
 
-int credis_auth(REDIS *rhnd, char *password);
+int credis_auth(REDIS rhnd, char *password);
 
-int credis_ping(REDIS *rhnd);
+int credis_ping(REDIS rhnd);
 
 
 /**** Commands operating on string values ************************************/
 
-int credis_set(REDIS *rhnd, char *key, char *val);
+int credis_set(REDIS rhnd, char *key, char *val);
 
-int credis_get(REDIS *rhnd, char *key, char **val);
+int credis_get(REDIS rhnd, char *key, char **val);
 
-int credis_getset(REDIS *rhnd, char *key, char *set_val, char **get_val);
+int credis_getset(REDIS rhnd, char *key, char *set_val, char **get_val);
 
 /* returns number of values returned in vector `valv' */
-int credis_mget(REDIS *rhnd, int keyc, char **keyv, char ***valv);
+int credis_mget(REDIS rhnd, int keyc, char **keyv, char ***valv);
 
 /* returns -1 if the key already exists */
-int credis_setnx(REDIS *rhnd, char *key, char *val);
+int credis_setnx(REDIS rhnd, char *key, char *val);
 
-int credis_incr(REDIS *rhnd, char *key, int *new_val);
+int credis_incr(REDIS rhnd, char *key, int *new_val);
 
-int credis_incrby(REDIS *rhnd, char *key, int incr_val, int *new_val);
+int credis_incrby(REDIS rhnd, char *key, int incr_val, int *new_val);
 
-int credis_decr(REDIS *rhnd, char *key, int *new_val);
+int credis_decr(REDIS rhnd, char *key, int *new_val);
 
-int credis_decrby(REDIS *rhnd, char *key, int decr_val, int *new_val);
+int credis_decrby(REDIS rhnd, char *key, int decr_val, int *new_val);
 
 /* returns -1 if the key doesn't exists and 0 if it does */
-int credis_exists(REDIS *rhnd, char *key);
+int credis_exists(REDIS rhnd, char *key);
 
 /* returns -1 if the key doesn't exists and 0 if it was removed */
-int credis_del(REDIS *rhnd, char *key);
+int credis_del(REDIS rhnd, char *key);
 
 /* returns type, refer to CREDIS_TYPE_* definitions */
-int credis_type(REDIS *rhnd, char *key);
+int credis_type(REDIS rhnd, char *key);
 
 
 
 /**** Commands operating on key space ****************************************/
 
 /* returns number of keys returned in vector `keyv' */
-int credis_keys(REDIS *rhnd, char *pattern, char ***keyv);
+int credis_keys(REDIS rhnd, char *pattern, char ***keyv);
 
-int credis_randomkey(REDIS *rhnd, char **key);
+int credis_randomkey(REDIS rhnd, char **key);
 
-int credis_rename(REDIS *rhnd, char *key, char *new_key_name);
+int credis_rename(REDIS rhnd, char *key, char *new_key_name);
 
 /* returns -1 if the key already exists */
-int credis_renamenx(REDIS *rhnd, char *key, char *new_key_name);
+int credis_renamenx(REDIS rhnd, char *key, char *new_key_name);
 
 /* returns size of db */
-int credis_dbsize(REDIS *rhnd);
+int credis_dbsize(REDIS rhnd);
 
 /* returns -1 if the timeout was not set; either due to key already has 
    an associated timeout or key does not exist */
-int credis_expire(REDIS *rhnd, char *key, int secs);
+int credis_expire(REDIS rhnd, char *key, int secs);
 
 /* returns seconds or -1 if key does not have expire set */
-int credis_ttl(REDIS *rhnd, char *key);
+int credis_ttl(REDIS rhnd, char *key);
 
 
 
 /**** Commands operating on lists ********************************************/
 
-int credis_rpush(REDIS *rhnd, char *key, char *element);
+int credis_rpush(REDIS rhnd, char *key, char *element);
 
-int credis_lpush(REDIS *rhnd, char *key, char *element);
+int credis_lpush(REDIS rhnd, char *key, char *element);
 
 /* returns length of list */
-int credis_llen(REDIS *rhnd, char *key);
+int credis_llen(REDIS rhnd, char *key);
 
 /* returns number of elements returned in vector `elementv' */
-int credis_lrange(REDIS *rhnd, char *key, int start, int range, char ***elementv);
+int credis_lrange(REDIS rhnd, char *key, int start, int range, char ***elementv);
 
-int credis_lindex(REDIS *rhnd, char *key, int index, char **element);
+int credis_lindex(REDIS rhnd, char *key, int index, char **element);
 
-int credis_lset(REDIS *rhnd, char *key, int index, char *element);
+int credis_lset(REDIS rhnd, char *key, int index, char *element);
 
 /* returns number of elements removed */
-int credis_lrem(REDIS *rhnd, char *key, int count, char *element);
+int credis_lrem(REDIS rhnd, char *key, int count, char *element);
 
 
 
@@ -169,44 +169,44 @@ int credis_lrem(REDIS *rhnd, char *key, int count, char *element);
 
 /**** Multiple databases handling commands ***********************************/
 
-int credis_select(REDIS *rhnd, int index);
+int credis_select(REDIS rhnd, int index);
 
 /* returns -1 if the key was not moved; already present at target 
  * or not found on current db */
-int credis_move(REDIS *rhnd, char *key, int index);
+int credis_move(REDIS rhnd, char *key, int index);
 
-int credis_flushdb(REDIS *rhnd);
+int credis_flushdb(REDIS rhnd);
 
-int credis_flushall(REDIS *rhnd);
+int credis_flushall(REDIS rhnd);
 
 
 
 /**** Sorting ***************************************************************/
 
 /* returns number of elements returned in vector `elementv' */
-int credis_sort(REDIS *rhnd, char *query, char ***elementv);
+int credis_sort(REDIS rhnd, char *query, char ***elementv);
 
 
 /**** Persistence control commands ******************************************/
 
-int credis_save(REDIS *rhnd);
+int credis_save(REDIS rhnd);
 
-int credis_bgsave(REDIS *rhnd);
+int credis_bgsave(REDIS rhnd);
 
 /* returns UNIX time stamp of last successfull save to disk */
-int credis_lastsave(REDIS *rhnd);
+int credis_lastsave(REDIS rhnd);
 
-int credis_shutdown(REDIS *rhnd);
+int credis_shutdown(REDIS rhnd);
 
 
 /**** Remote server control commands *****************************************/
 
-int credis_info(REDIS *rhnd, char **info);
+int credis_info(REDIS rhnd, char **info);
 
-int credis_monitor(REDIS *rhnd);
+int credis_monitor(REDIS rhnd);
 
 /* setting host to NULL and/or port to 0 will turn off replication */
-int credis_slaveof(REDIS *rhnd, char *host, int port);
+int credis_slaveof(REDIS rhnd, char *host, int port);
 
 
 #endif

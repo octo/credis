@@ -1,4 +1,4 @@
-CFLAGS = -g -o2
+CFLAGS = -g -O2
 
 # generic build macro
 BUILD_C = $(CC) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS) -o $@ $^

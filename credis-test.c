@@ -57,7 +57,7 @@ long timer(int reset)
 
 
 int main(int argc, char **argv) {
-  REDIS *redis = credis_connect(NULL, 0, 2000);
+  REDIS redis = credis_connect(NULL, 0, 2000);
   int rc, valc;
   char *val, **valv;
   char buf[200];
@@ -73,15 +73,16 @@ int main(int argc, char **argv) {
         printf("get returned error\n");
     }
     t = timer(0);
-    printf("done! Took %.3f seconds, that is %d commands/second\n", ((float)t)/1000, (num*1000)/t);
+    printf("done! Took %.3f seconds, that is %ld commands/second\n", ((float)t)/1000, (num*1000)/t);
     exit(0);
   }
 
+  printf("Testing a number of credis functions. To perform a simplistic set-command\n"\
+         "benchmark run `%s <num>', where <num> is the number\n"\
+         "of set-commands to send.\n\n", argv[0]);
+
   rc = credis_ping(redis);
   printf("ping returned: %d\n", rc);
-
-  rc = credis_get(redis, "kalle", &val);
-  printf("get kalle returned: %s\n", val);
 
   rc = credis_set(redis, "kalle", "kula");
   printf("set kalle=kula returned: %d\n", rc);

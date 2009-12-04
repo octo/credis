@@ -99,6 +99,12 @@ int credis_mget(REDIS rhnd, int keyc, char **keyv, char ***valv);
 /* returns -1 if the key already exists */
 int credis_setnx(REDIS rhnd, char *key, char *val);
 
+/* TODO
+ *
+ * MSET key1 value1 key2 value2 ... keyN valueN set a multiple keys to multiple values in a single atomic operation
+ * MSETNX key1 value1 key2 value2 ... keyN valueN set a multiple keys to multiple values in a single atomic operation if none of
+ */
+
 int credis_incr(REDIS rhnd, char *key, int *new_val);
 
 int credis_incrby(REDIS rhnd, char *key, int incr_val, int *new_val);
@@ -165,8 +171,23 @@ int credis_lrem(REDIS rhnd, char *key, int count, char *element);
 
 /**** Commands operating on sets *********************************************/
 
-/* TODO */
-
+/* TODO
+ *
+ * SADD key member Add the specified member to the Set value at key
+ * SREM key member Remove the specified member from the Set value at key
+ * SPOP key Remove and return (pop) a random element from the Set value at key
+ * SMOVE srckey dstkey member Move the specified member from one Set to another atomically
+ * SCARD key Return the number of elements (the cardinality) of the Set at key
+ * SISMEMBER key member Test if the specified value is a member of the Set at key
+ * SINTER key1 key2 ... keyN Return the intersection between the Sets stored at key1, key2, ..., keyN
+ * SINTERSTORE dstkey key1 key2 ... keyN Compute the intersection between the Sets stored at key1, key2, ..., keyN, and store the resulting Set at dstkey
+ * SUNION key1 key2 ... keyN Return the union between the Sets stored at key1, key2, ..., keyN
+ * SUNIONSTORE dstkey key1 key2 ... keyN Compute the union between the Sets stored at key1, key2, ..., keyN, and store the resulting Set at dstkey
+ * SDIFF key1 key2 ... keyN Return the difference between the Set stored at key1 and all the Sets key2, ..., keyN
+ * SDIFFSTORE dstkey key1 key2 ... keyN Compute the difference between the Set key1 and all the Sets key2, ..., keyN, and store the resulting Set at dstkey
+ * SMEMBERS key Return all the members of the Set value at key
+ * SRANDMEMBER key Return a random member of the Set value at key
+ */
 
 
 /**** Multiple databases handling commands ***********************************/

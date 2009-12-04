@@ -43,6 +43,11 @@
 #include <errno.h>
 #include <assert.h>
 
+#ifdef PRINTDEBUG
+#include <sys/timeb.h> /* ftime() */
+#include <time.h>
+#endif
+
 #include "credis.h"
 
 #define CR_ERROR '-'
@@ -85,6 +90,69 @@ typedef struct _cr_redis {
 } cr_redis;
 
 
+/* add -DPRINTDEBUG to CPPFLAGS in Makefile for debug outputs */
+#ifndef PRINTDEBUG
+#define DEBUG
+#else
+#define DEBUG(args...) cr_debug(__FILE__, __FUNCTION__, __LINE__, ##args)
+
+/* Returns a pointer to a time-stamp string, 23 bytes plus zero trailer, at
+ * the format YYYY-MM-DD HH:MM:SS.sss\0 */
+const char *cr_timestampp(void)
+{
+  static char buf[32];
+  struct tm *tm;
+  struct timeb tb;
+  time_t secs;
+
+  ftime(&tb);
+  secs = tb.time;
+
+  time(&secs);
+  tm = localtime(&secs);
+
+  if (tm) {
+    sprintf(buf, "%04d-%02d-%02d %02d:%02d:%02d.%03d",
+            tm->tm_year+1900, tm->tm_mon+1, tm->tm_mday,
+            tm->tm_hour, tm->tm_min, tm->tm_sec,
+            tb.millitm);
+  }
+  else {
+    /* return dummy time-stamp on error */
+    sprintf(buf,
+            "%04d-%02d-%02d %02d:%02d:%02d.%03d",
+            0, 0, 0, 0, 0, 0, 0);
+  }
+
+  return buf;
+}
+
+#define FILE_LINE_LEN 40
+
+/* Outputs a debug message. Should not be used directly, use DEBUG macro
+ * instead. */
+void cr_debug(const char *file, const char *function, int line, const char *txt, ...)
+{
+  static char width[FILE_LINE_LEN];
+  va_list argp;
+
+  snprintf(width, FILE_LINE_LEN, "%s:%d %s() ...................................................", file, line, function);
+
+  printf("%s %s ", cr_timestampp(), width);
+
+  if (txt != NULL) {
+    va_start(argp, txt);
+    vprintf(txt, argp);
+    va_end(argp);
+  }
+  else
+    printf("\n");
+
+  return;
+}
+
+#endif /* PRINTDEBUG */
+
 /* Returns pointer to the '\r' of the first occurence of "\r\n", or NULL
  * if not found */
 static char * cr_findnl(char *buf, int len) {
@@ -98,7 +166,7 @@ static char * cr_findnl(char *buf, int len) {
 
 
 /* Receives at most `size' bytes from socket `fd' to `buf'. Times out after 
- * `msecs' milliseconds if not `size' data has yet arrived. 
+ * `msecs' milliseconds if no data has yet arrived.
  * Returns:
  *  >0  number of read bytes on success
  *   0  server closed connection
@@ -118,10 +186,8 @@ static int cr_receivedata(int fd, unsigned int msecs, char *buf, int size)
 
   rc = select(fd+1, &fds, NULL, NULL, &tv);
 
-  if (rc > 0) {
-    // if (FD_ISSET(fd, &fds))
+  if (rc > 0)
     return recv(fd, buf, size, 0);
-  }
   else if (rc == 0)
     return -2;
   else
@@ -132,7 +198,7 @@ static int cr_receivedata(int fd, unsigned int msecs, char *buf, int size)
 /* Sends `size' bytes from `buf' to socket `fd' and times out after `msecs' 
  * milliseconds if not all data has been sent. 
  * Returns:
- *  >0  number of bytes sent; if less than `size' it means that timeout occured  
+ *  >0  number of bytes sent; if less than `size' it means that timeout occurred
  *  -1  on error */
 static int cr_senddata(int fd, unsigned int msecs, char *buf, int size)
 {
@@ -152,7 +218,6 @@ static int cr_senddata(int fd, unsigned int msecs, char *buf, int size)
     rc = select(fd+1, NULL, &fds, NULL, &tv);
 
     if (rc > 0) {
-      // if (FD_ISSET(fd, &fds))
       rc = send(fd, buf+sent, size-sent, 0);
       if (rc < 0)
         return -1;
@@ -169,8 +234,12 @@ static int cr_senddata(int fd, unsigned int msecs, char *buf, int size)
 
 
 /* Buffered read line, returns pointer to zero-terminated string 
- * and length of that string, or -1 if a string is not available. 
- * `start' specifies from which byte to start looking for "\r\n". */
+ * and length of that string. `start' specifies from which byte
+ * to start looking for "\r\n".
+ * Returns:
+ *  >0  length of string to which pointer `line' refers
+ *   0  connection to Redis server was closed
+ *  -1  on error, i.e. a string is not available */
 static int cr_readln(REDIS rhnd, int start, char **line)
 {
   cr_buffer *buf = &(rhnd->buf);
@@ -195,7 +264,8 @@ static int cr_readln(REDIS rhnd, int start, char **line)
   nl = cr_findnl(buf->data + buf->idx + start, buf->len - buf->idx);
 
   if (nl == NULL) {
-    printf("more data needed\n");
+    /* TODO read more data until newline is found or until error */
+    DEBUG("more data needed\n");
     return -1; /* not found, read more data... */
   }
 
@@ -205,7 +275,7 @@ static int cr_readln(REDIS rhnd, int start, char **line)
   len = nl - *line;
   buf->idx = (nl - buf->data) + 2;
 
-  // printf("<len=%d, idx=%d> %s\n", buf->len, buf->idx, *line);
+  DEBUG("<len=%d, idx=%d> %s\n", buf->len, buf->idx, *line);
 
   return len;
 }
@@ -363,11 +433,11 @@ static int cr_sendfandreceive(REDIS rhnd, char recvtype, const char *format, ...
     return -1;
   if (rhnd->buf.len >= rhnd->buf.size) {
     /* TODO allocate more memory and try again */
-    printf("Message truncated!\n");
+    DEBUG("Message truncated!\n");
     return -1;
   }
 
-  //  printf("Send message: %s\n", buf->data);
+  DEBUG("Sending message: %s\n", rhnd->buf.data);
 
   rc = cr_senddata(rhnd->fd, rhnd->timeout, rhnd->buf.data, rhnd->buf.len);
 

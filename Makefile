@@ -1,6 +1,6 @@
 CFLAGS = -g -O2 -Wall
 LDFLAGS =
-CPPFLAGS =
+CPPFLAGS = -DPRINTDEBUG
 
 # targets to build with 'make all'
 TARGETS = credis-test libcredis.a libcredis.so
@@ -16,7 +16,7 @@ libcredis.a: credis.o
 libcredis.so: credis.o
 	$(CC) -shared -Wl,-soname,$@ -o $@ $^
 
-credis.o: credis.c credis.h
+credis.o: credis.c credis.h Makefile
 	$(CC) -c -fPIC $(CFLAGS) $(CPPFLAGS) -o $@ credis.c
 
 install:

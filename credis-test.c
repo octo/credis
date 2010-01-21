@@ -58,8 +58,8 @@ long timer(int reset)
 
 int main(int argc, char **argv) {
   REDIS redis = credis_connect(NULL, 0, 2000);
-  char *val;
-  int rc;
+  char *val, **valv, *keyv[] = {"kalle", "adam", "bertil", "none"};
+  int rc, keyc=4;
 
   if (argc == 2) {
     int i;
@@ -77,7 +77,7 @@ int main(int argc, char **argv) {
   }
 
   printf("Testing a number of credis functions. To perform a simplistic set-command\n"\
-         "benchmark run `%s <num>', where <num> is the number\n"\
+         "benchmark, run: `%s <num>' where <num> is the number\n"\
          "of set-commands to send.\n\n", argv[0]);
 
   rc = credis_ping(redis);
@@ -110,6 +110,9 @@ int main(int argc, char **argv) {
 
   rc = credis_lastsave(redis);
   printf("lastsave returned: %d\n", rc);
+
+  rc = credis_mget(redis, keyc, keyv, &valv);
+  printf("mget returned: %d\n", rc);
 
   credis_close(redis);
 

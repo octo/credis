@@ -43,11 +43,6 @@
 #include <errno.h>
 #include <assert.h>
 
-#ifdef PRINTDEBUG
-#include <sys/timeb.h> /* ftime() */
-#include <time.h>
-#endif
-
 #include "credis.h"
 
 #define CR_ERROR '-'
@@ -58,6 +53,18 @@
 
 #define CR_BUFFER_SIZE 4096
 #define CR_MULTIBULK_SIZE 64
+
+#ifdef PRINTDEBUG
+/* add -DPRINTDEBUG to CPPFLAGS in Makefile for debug outputs */
+#define DEBUG(...)                                 \
+  do {                                             \
+    printf("%s() @ %d: ", __FUNCTION__, __LINE__); \
+    printf(__VA_ARGS__);                           \
+    printf("\n");                                  \
+  } while (0)
+#else
+#define DEBUG
+#endif
 
 typedef struct _cr_buffer {
   char *data;
@@ -90,69 +97,6 @@ typedef struct _cr_redis {
 } cr_redis;
 
 
-/* add -DPRINTDEBUG to CPPFLAGS in Makefile for debug outputs */
-#ifndef PRINTDEBUG
-#define DEBUG
-#else
-#define DEBUG(args...) cr_debug(__FILE__, __FUNCTION__, __LINE__, ##args)
-
-/* Returns a pointer to a time-stamp string, 23 bytes plus zero trailer, at
- * the format YYYY-MM-DD HH:MM:SS.sss\0 */
-const char *cr_timestampp(void)
-{
-  static char buf[32];
-  struct tm *tm;
-  struct timeb tb;
-  time_t secs;
-
-  ftime(&tb);
-  secs = tb.time;
-
-  time(&secs);
-  tm = localtime(&secs);
-
-  if (tm) {
-    sprintf(buf, "%04d-%02d-%02d %02d:%02d:%02d.%03d",
-            tm->tm_year+1900, tm->tm_mon+1, tm->tm_mday,
-            tm->tm_hour, tm->tm_min, tm->tm_sec,
-            tb.millitm);
-  }
-  else {
-    /* return dummy time-stamp on error */
-    sprintf(buf,
-            "%04d-%02d-%02d %02d:%02d:%02d.%03d",
-            0, 0, 0, 0, 0, 0, 0);
-  }
-
-  return buf;
-}
-
-#define FILE_LINE_LEN 40
-
-/* Outputs a debug message. Should not be used directly, use DEBUG macro
- * instead. */
-void cr_debug(const char *file, const char *function, int line, const char *txt, ...)
-{
-  static char width[FILE_LINE_LEN];
-  va_list argp;
-
-  snprintf(width, FILE_LINE_LEN, "%s:%d %s() ...................................................", file, line, function);
-
-  printf("%s %s ", cr_timestampp(), width);
-
-  if (txt != NULL) {
-    va_start(argp, txt);
-    vprintf(txt, argp);
-    va_end(argp);
-  }
-  else
-    printf("\n");
-
-  return;
-}
-
-#endif /* PRINTDEBUG */
-
 /* Returns pointer to the '\r' of the first occurence of "\r\n", or NULL
  * if not found */
 static char * cr_findnl(char *buf, int len) {
@@ -162,6 +106,31 @@ static char * cr_findnl(char *buf, int len) {
         return --buf;
   }
   return NULL;
+}
+
+
+/* Allocate at least `size' bytes more buffer memory keeping the previously
+ * allocated and used memory untouched.
+ * Returns:
+ *   0  on success
+ *  -1  on error, i.e. more memory not available */
+static int cr_moremem(REDIS rhnd, int size)
+{
+  char *ptr;
+  int total, n;
+
+  n = size / CR_BUFFER_SIZE + 1;
+  total = rhnd->buf.size + n * CR_BUFFER_SIZE;
+
+  DEBUG("allocate %d x CR_BUFFER_SIZE, total %d bytes", n, total);
+
+  ptr = realloc(rhnd->buf.data, total);
+  if (ptr == NULL)
+    return -1;
+
+  rhnd->buf.data = ptr;
+  rhnd->buf.size = total;
+  return 0;
 }
 
 
@@ -417,25 +386,13 @@ REDIS cr_new(void)
 }
 
 
-static int cr_sendfandreceive(REDIS rhnd, char recvtype, const char *format, ...) 
+/* Send message that has been prepared in message buffer prior to the call
+ * to this function. Wait and receive reply. */
+static int cr_sendandreceive(REDIS rhnd, char recvtype)
 {
-  va_list ap;
   int rc;
 
-  assert(format != NULL);
   assert(rhnd != NULL);
-
-  va_start(ap, format);
-  rhnd->buf.len = vsnprintf(rhnd->buf.data, rhnd->buf.size, format, ap);
-  va_end(ap);
-
-  if (rhnd->buf.len < 0)
-    return -1;
-  if (rhnd->buf.len >= rhnd->buf.size) {
-    /* TODO allocate more memory and try again */
-    DEBUG("Message truncated!\n");
-    return -1;
-  }
 
   DEBUG("Sending message: %s\n", rhnd->buf.data);
 
@@ -451,13 +408,35 @@ static int cr_sendfandreceive(REDIS rhnd, char recvtype, const char *format, ...
 }
 
 
+/* Prepare message buffer for sending using a printf()-style formatting. */
+static int cr_sendfandreceive(REDIS rhnd, char recvtype, const char *format, ...)
+{
+  va_list ap;
+
+  assert(format != NULL);
+
+  va_start(ap, format);
+  rhnd->buf.len = vsnprintf(rhnd->buf.data, rhnd->buf.size, format, ap);
+  va_end(ap);
+
+  if (rhnd->buf.len < 0)
+    return -1;
+
+  if (rhnd->buf.len >= rhnd->buf.size) {
+    /* TODO allocate more memory and try again */
+    DEBUG("Message truncated!\n");
+    return -1;
+  }
+
+  return cr_sendandreceive(rhnd, recvtype);
+}
+
 void credis_close(REDIS rhnd)
 {
   if (rhnd->fd > 0)
     close(rhnd->fd);
   cr_delete(rhnd);
 }
-
 
 REDIS credis_connect(char *host, int port, int timeout)
 {
@@ -504,8 +483,6 @@ REDIS credis_connect(char *host, int port, int timeout)
   return NULL;
 }
 
-
-
 int credis_set(REDIS rhnd, char *key, char *val)
 {
   return cr_sendfandreceive(rhnd, CR_INLINE, "SET %s %d\r\n%s\r\n", 
@@ -545,14 +522,29 @@ int credis_auth(REDIS rhnd, char *password)
 
 int credis_mget(REDIS rhnd, int keyc, char **keyv, char ***valv)
 {
-  int rc=0;
+  cr_buffer *buf = &(rhnd->buf);
+  int rc=0, i, size;
 
-  /* TODO 
-  if ((rc = cr_sendfandreceive(rhnd, CR_MULTIBULK, "MGET %s\r\n", key)) == 0) {
+  /* prepare message buffer (or should we just send it to socket?) */
+  buf->len = snprintf(buf->data, buf->size, "MGET");
+  for (i = 0; i < keyc; i++) {
+    size = buf->size - buf->len;
+    rc = snprintf(buf->data + buf->len, size, " %s", keyv[i]);
+    if (rc >= size) {
+      /* truncated, get more memory and try again */
+      if (cr_moremem(rhnd, rc - size + 1))
+        return CREDIS_ERR_NOMEM;
+
+      size = buf->size - buf->len;
+      rc = snprintf(buf->data + buf->len, size, " %s", keyv[i]);
+    }
+    buf->len += rc;
+  }
+
+  if ((rc = cr_sendandreceive(rhnd, CR_MULTIBULK)) == 0) {
     *valv = rhnd->reply.multibulk.bulks;
     rc = rhnd->reply.multibulk.len;
   }
-  */
 
   return rc;
 }

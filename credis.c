@@ -100,7 +100,7 @@ typedef struct _cr_redis {
 /* Returns pointer to the '\r' of the first occurence of "\r\n", or NULL
  * if not found */
 static char * cr_findnl(char *buf, int len) {
-  while (--len) {
+  while (--len >= 0) {
     if (*(buf++) == '\r')
       if (*buf == '\n')
         return --buf;
@@ -114,22 +114,48 @@ static char * cr_findnl(char *buf, int len) {
  * Returns:
  *   0  on success
  *  -1  on error, i.e. more memory not available */
-static int cr_moremem(REDIS rhnd, int size)
+static int cr_moremem(cr_buffer *buf, int size)
 {
   char *ptr;
   int total, n;
 
   n = size / CR_BUFFER_SIZE + 1;
-  total = rhnd->buf.size + n * CR_BUFFER_SIZE;
+  total = buf->size + n * CR_BUFFER_SIZE;
 
   DEBUG("allocate %d x CR_BUFFER_SIZE, total %d bytes", n, total);
 
-  ptr = realloc(rhnd->buf.data, total);
+  ptr = realloc(buf->data, total);
   if (ptr == NULL)
     return -1;
 
-  rhnd->buf.data = ptr;
-  rhnd->buf.size = total;
+  buf->data = ptr;
+  buf->size = total;
+  return 0;
+}
+
+
+/* Appends a string `str' to the end of buffer `buf'. If available memory
+ * in buffer is not enough to hold `str' more memory is allocated to the
+ * buffer. 
+ * Returns:
+ *   0  on success
+ *  <0  on error, i.e. more memory not available */
+static int cr_appendstr(cr_buffer *buf, char *str)
+{
+  int rc, avail;
+
+  avail = buf->size - buf->len;
+  rc = snprintf(buf->data + buf->len, avail, " %s", str);
+  if (rc >= avail) {
+    DEBUG("truncated, get more memory and try again");
+    if (cr_moremem(buf, rc - avail + 1))
+      return CREDIS_ERR_NOMEM;
+    
+    avail = buf->size - buf->len;
+    rc = snprintf(buf->data + buf->len, avail, " %s", str);
+  }
+  buf->len += rc;
+
   return 0;
 }
 
@@ -213,29 +239,32 @@ static int cr_readln(REDIS rhnd, int start, char **line)
 {
   cr_buffer *buf = &(rhnd->buf);
   char *nl;
-  int rc, len;
+  int rc, len, avail;
 
   if (buf->len == 0 || buf->idx >= buf->len) {
-    /* buffer is empty */
     buf->idx = 0;
     buf->len = 0;
-    rc = cr_receivedata(rhnd->fd, rhnd->timeout, buf->data, buf->size);
+  }
 
+  /* TODO check that start doesn't go out of limit */
+  while ((nl = cr_findnl(buf->data + buf->idx + start, buf->len - buf->idx)) == NULL) {
+    DEBUG("need to read more data");
+    avail = buf->size - buf->len;
+    if (avail < (CR_BUFFER_SIZE/10)) {
+      DEBUG("available buffer memory is low, get more memory");
+      if (cr_moremem(buf, 1))
+        return CREDIS_ERR_NOMEM;
+
+      avail = buf->size - buf->len;
+    }
+
+    rc = cr_receivedata(rhnd->fd, rhnd->timeout, buf->data + buf->len, avail);
     if (rc > 0)
-      buf->len = rc;
+      buf->len += rc;
     else if (rc == 0)
       return 0; /* EOF reached, connection terminated */
     else 
       return -1; /* error */
-  }
-
-  /* TODO check that start doesn't go out of limit */
-  nl = cr_findnl(buf->data + buf->idx + start, buf->len - buf->idx);
-
-  if (nl == NULL) {
-    /* TODO read more data until newline is found or until error */
-    DEBUG("more data needed\n");
-    return -1; /* not found, read more data... */
   }
 
   *nl = '\0'; /* zero terminate */
@@ -244,7 +273,7 @@ static int cr_readln(REDIS rhnd, int start, char **line)
   len = nl - *line;
   buf->idx = (nl - buf->data) + 2;
 
-  DEBUG("<len=%d, idx=%d> %s\n", buf->len, buf->idx, *line);
+  DEBUG("<len=%d, idx=%d> %s", buf->len, buf->idx, *line);
 
   return len;
 }
@@ -394,7 +423,7 @@ static int cr_sendandreceive(REDIS rhnd, char recvtype)
 
   assert(rhnd != NULL);
 
-  DEBUG("Sending message: %s\n", rhnd->buf.data);
+  DEBUG("Sending message: len=%d, data=%s", rhnd->buf.len, rhnd->buf.data);
 
   rc = cr_senddata(rhnd->fd, rhnd->timeout, rhnd->buf.data, rhnd->buf.len);
 
@@ -411,22 +440,30 @@ static int cr_sendandreceive(REDIS rhnd, char recvtype)
 /* Prepare message buffer for sending using a printf()-style formatting. */
 static int cr_sendfandreceive(REDIS rhnd, char recvtype, const char *format, ...)
 {
+  int rc;
   va_list ap;
+  cr_buffer *buf = &(rhnd->buf);
 
   assert(format != NULL);
 
   va_start(ap, format);
-  rhnd->buf.len = vsnprintf(rhnd->buf.data, rhnd->buf.size, format, ap);
+  rc = vsnprintf(buf->data, buf->size, format, ap);
   va_end(ap);
 
-  if (rhnd->buf.len < 0)
+  if (rc < 0)
     return -1;
 
-  if (rhnd->buf.len >= rhnd->buf.size) {
-    /* TODO allocate more memory and try again */
-    DEBUG("Message truncated!\n");
-    return -1;
+  if (rc >= buf->size) {
+    DEBUG("truncated, get more memory and try again");
+    if (cr_moremem(buf, rc - buf->size + 1))
+      return CREDIS_ERR_NOMEM;
+
+    va_start(ap, format);
+    rc = vsnprintf(buf->data, buf->size, format, ap);
+    va_end(ap);
   }
+
+  buf->len = rc;
 
   return cr_sendandreceive(rhnd, recvtype);
 }
@@ -517,29 +554,22 @@ int credis_ping(REDIS rhnd)
 
 int credis_auth(REDIS rhnd, char *password)
 {
-  return cr_sendfandreceive(rhnd, CR_INLINE, "PING %s\r\n", password);
+  return cr_sendfandreceive(rhnd, CR_INLINE, "AUTH %s\r\n", password);
 }
 
 int credis_mget(REDIS rhnd, int keyc, char **keyv, char ***valv)
 {
   cr_buffer *buf = &(rhnd->buf);
-  int rc=0, i, size;
+  int rc, i;
 
-  /* prepare message buffer (or should we just send it to socket?) */
   buf->len = snprintf(buf->data, buf->size, "MGET");
   for (i = 0; i < keyc; i++) {
-    size = buf->size - buf->len;
-    rc = snprintf(buf->data + buf->len, size, " %s", keyv[i]);
-    if (rc >= size) {
-      /* truncated, get more memory and try again */
-      if (cr_moremem(rhnd, rc - size + 1))
-        return CREDIS_ERR_NOMEM;
-
-      size = buf->size - buf->len;
-      rc = snprintf(buf->data + buf->len, size, " %s", keyv[i]);
-    }
-    buf->len += rc;
+    if ((rc = cr_appendstr(buf, keyv[i])) != 0)
+      return rc;
   }
+
+  if ((rc = cr_appendstr(buf, "\r\n")) != 0)
+    return rc;
 
   if ((rc = cr_sendandreceive(rhnd, CR_MULTIBULK)) == 0) {
     *valv = rhnd->reply.multibulk.bulks;
@@ -768,7 +798,6 @@ int credis_lset(REDIS rhnd, char *key, int index, char *val)
 {
   return  cr_sendfandreceive(rhnd, CR_INT, "LSET %s %d %s\r\n", key, index, val);
 }
-
 
 int credis_lrem(REDIS rhnd, char *key, int count, char *val)
 {

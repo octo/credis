@@ -94,7 +94,7 @@ int credis_get(REDIS rhnd, char *key, char **val);
 int credis_getset(REDIS rhnd, char *key, char *set_val, char **get_val);
 
 /* returns number of values returned in vector `valv'. `keyc' is the number of
- * keys to get stored in `keyv'. */
+ * keys stored in `keyv'. */
 int credis_mget(REDIS rhnd, int keyc, char **keyv, char ***valv);
 
 /* returns -1 if the key already exists */

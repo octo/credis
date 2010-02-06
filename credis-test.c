@@ -58,8 +58,8 @@ long timer(int reset)
 
 int main(int argc, char **argv) {
   REDIS redis = credis_connect(NULL, 0, 2000);
-  char *val, **valv, *keyv[] = {"kalle", "adam", "bertil", "none"};
-  int rc, keyc=4;
+  char *val, **valv, *keyv[] = {"kalle", "adam", "unknown", "bertil", "none"};
+  int rc, keyc=5, i;
 
   if (argc == 2) {
     int i;
@@ -105,14 +105,16 @@ int main(int argc, char **argv) {
   rc = credis_get(redis, "caesar", &val);
   printf("get caesar returned: %s\n", val);
 
-  rc = credis_info(redis, &val);
-  printf("info returned %d\n", rc);
-
   rc = credis_lastsave(redis);
   printf("lastsave returned: %d\n", rc);
 
   rc = credis_mget(redis, keyc, keyv, &valv);
   printf("mget returned: %d\n", rc);
+  for (i = 0; i < rc; i++)
+    printf(" % 2d: %s\n", i, valv[i]);
+
+  rc = credis_info(redis, &val);
+  printf("info returned %d\n", rc);
 
   credis_close(redis);
 

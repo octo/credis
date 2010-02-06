@@ -1,6 +1,6 @@
-CFLAGS = -g -O2 -Wall
+CFLAGS = -g -O2
 LDFLAGS =
-CPPFLAGS = -DPRINTDEBUG
+#CPPFLAGS = -DPRINTDEBUG
 
 # targets to build with 'make all'
 TARGETS = credis-test libcredis.a libcredis.so

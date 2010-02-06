@@ -1,6 +1,14 @@
-CFLAGS = -g -O2
+CFLAGS = -g -O2 -Wall
 LDFLAGS =
 #CPPFLAGS = -DPRINTDEBUG
+
+# build shared lib under OS X or Linux
+OS = $(shell uname -s)
+ifeq ($(OS),Darwin)
+	SHAREDLIB_LINK_OPTIONS=-dynamiclib -Wl,-install_name -Wl,
+else
+	SHAREDLIB_LINK_OPTIONS=-shared -Wl,-soname,
+endif
 
 # targets to build with 'make all'
 TARGETS = credis-test libcredis.a libcredis.so
@@ -14,7 +22,7 @@ libcredis.a: credis.o
 	$(AR) -cvq $@ $^
 
 libcredis.so: credis.o
-	$(CC) -shared -Wl,-soname,$@ -o $@ $^
+	$(CC) $(SHAREDLIB_LINK_OPTIONS)$@ -o $@ $^
 
 credis.o: credis.c credis.h Makefile
 	$(CC) -c -fPIC $(CFLAGS) $(CPPFLAGS) -o $@ credis.c

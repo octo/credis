@@ -63,7 +63,7 @@
     printf("\n");                                  \
   } while (0)
 #else
-#define DEBUG
+#define DEBUG(...)
 #endif
 
 typedef struct _cr_buffer {

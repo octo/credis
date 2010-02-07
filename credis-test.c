@@ -58,7 +58,8 @@ long timer(int reset)
 
 int main(int argc, char **argv) {
   REDIS redis = credis_connect(NULL, 0, 2000);
-  char *val, **valv, *keyv[] = {"kalle", "adam", "unknown", "bertil", "none"};
+  char *val, **valv;
+  const char *keyv[] = {"kalle", "adam", "unknown", "bertil", "none"};
   int rc, keyc=5, i;
 
   if (argc == 2) {

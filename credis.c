@@ -140,7 +140,7 @@ static int cr_moremem(cr_buffer *buf, int size)
  * Returns:
  *   0  on success
  *  <0  on error, i.e. more memory not available */
-static int cr_appendstr(cr_buffer *buf, char *str)
+static int cr_appendstr(cr_buffer *buf, const char *str)
 {
   int rc, avail;
 
@@ -475,7 +475,7 @@ void credis_close(REDIS rhnd)
   cr_delete(rhnd);
 }
 
-REDIS credis_connect(char *host, int port, int timeout)
+REDIS credis_connect(const char *host, int port, int timeout)
 {
   int fd, yes = 1;
   struct sockaddr_in sa;  
@@ -520,13 +520,13 @@ REDIS credis_connect(char *host, int port, int timeout)
   return NULL;
 }
 
-int credis_set(REDIS rhnd, char *key, char *val)
+int credis_set(REDIS rhnd, const char *key, const char *val)
 {
   return cr_sendfandreceive(rhnd, CR_INLINE, "SET %s %d\r\n%s\r\n", 
                             key, strlen(val), val);
 }
 
-int credis_get(REDIS rhnd, char *key, char **val)
+int credis_get(REDIS rhnd, const char *key, char **val)
 {
   int rc = cr_sendfandreceive(rhnd, CR_BULK, "GET %s\r\n", key);
 
@@ -536,7 +536,7 @@ int credis_get(REDIS rhnd, char *key, char **val)
   return rc;
 }
 
-int credis_getset(REDIS rhnd, char *key, char *set_val, char **get_val)
+int credis_getset(REDIS rhnd, const char *key, const char *set_val, char **get_val)
 {
   int rc = cr_sendfandreceive(rhnd, CR_BULK, "GETSET %s %d\r\n%s\r\n", 
                               key, strlen(set_val), set_val);
@@ -552,12 +552,12 @@ int credis_ping(REDIS rhnd)
   return cr_sendfandreceive(rhnd, CR_INLINE, "PING\r\n");
 }
 
-int credis_auth(REDIS rhnd, char *password)
+int credis_auth(REDIS rhnd, const char *password)
 {
   return cr_sendfandreceive(rhnd, CR_INLINE, "AUTH %s\r\n", password);
 }
 
-int credis_mget(REDIS rhnd, int keyc, char **keyv, char ***valv)
+int credis_mget(REDIS rhnd, int keyc, const char **keyv, char ***valv)
 {
   cr_buffer *buf = &(rhnd->buf);
   int rc, i;
@@ -579,7 +579,7 @@ int credis_mget(REDIS rhnd, int keyc, char **keyv, char ***valv)
   return rc;
 }
 
-int credis_setnx(REDIS rhnd, char *key, char *val)
+int credis_setnx(REDIS rhnd, const char *key, const char *val)
 {
   int rc = cr_sendfandreceive(rhnd, CR_INLINE, "SETNX %s %d\r\n%s\r\n", 
                               key, strlen(val), val);
@@ -591,7 +591,7 @@ int credis_setnx(REDIS rhnd, char *key, char *val)
   return rc;
 }
 
-static int cr_incr(REDIS rhnd, int incr, int decr, char *key, int *new_val)
+static int cr_incr(REDIS rhnd, int incr, int decr, const char *key, int *new_val)
 {
   int rc = 0;
 
@@ -608,27 +608,27 @@ static int cr_incr(REDIS rhnd, int incr, int decr, char *key, int *new_val)
   return rc;
 }
 
-int credis_incr(REDIS rhnd, char *key, int *new_val)
+int credis_incr(REDIS rhnd, const char *key, int *new_val)
 {
   return cr_incr(rhnd, 1, 0, key, new_val);
 }
 
-int credis_decr(REDIS rhnd, char *key, int *new_val)
+int credis_decr(REDIS rhnd, const char *key, int *new_val)
 {
   return cr_incr(rhnd, 0, 1, key, new_val);
 }
 
-int credis_incrby(REDIS rhnd, char *key, int incr_val, int *new_val)
+int credis_incrby(REDIS rhnd, const char *key, int incr_val, int *new_val)
 {
   return cr_incr(rhnd, incr_val, 0, key, new_val);
 }
 
-int credis_decrby(REDIS rhnd, char *key, int decr_val, int *new_val)
+int credis_decrby(REDIS rhnd, const char *key, int decr_val, int *new_val)
 {
   return cr_incr(rhnd, 0, decr_val, key, new_val);
 }
 
-int credis_exists(REDIS rhnd, char *key)
+int credis_exists(REDIS rhnd, const char *key)
 {
   int rc = cr_sendfandreceive(rhnd, CR_INT, "EXISTS %s\r\n", key);
 
@@ -639,7 +639,7 @@ int credis_exists(REDIS rhnd, char *key)
   return rc;
 }
 
-int credis_del(REDIS rhnd, char *key)
+int credis_del(REDIS rhnd, const char *key)
 {
   int rc = cr_sendfandreceive(rhnd, CR_INT, "DELETE %s\r\n", key);
 
@@ -650,7 +650,7 @@ int credis_del(REDIS rhnd, char *key)
   return rc;
 }
 
-int credis_type(REDIS rhnd, char *key)
+int credis_type(REDIS rhnd, const char *key)
 {
   int rc = cr_sendfandreceive(rhnd, CR_INLINE, "TYPE %s\r\n", key);
 
@@ -669,7 +669,7 @@ int credis_type(REDIS rhnd, char *key)
   return rc;
 }
 
-int credis_keys(REDIS rhnd, char *pattern, char ***keyv)
+int credis_keys(REDIS rhnd, const char *pattern, char ***keyv)
 {
   int rc = cr_sendfandreceive(rhnd, CR_MULTIBULK, "KEYS %s\r\n", pattern);
 
@@ -691,13 +691,13 @@ int credis_randomkey(REDIS rhnd, char **key)
   return rc;
 }
 
-int credis_rename(REDIS rhnd, char *key, char *new_key_name)
+int credis_rename(REDIS rhnd, const char *key, const char *new_key_name)
 {
   return cr_sendfandreceive(rhnd, CR_INLINE, "RENAME %s %s\r\n", 
                             key, new_key_name);
 }
 
-int credis_renamenx(REDIS rhnd, char *key, char *new_key_name)
+int credis_renamenx(REDIS rhnd, const char *key, const char *new_key_name)
 {
   int rc = cr_sendfandreceive(rhnd, CR_INT, "RENAMENX %s %s\r\n", 
                               key, new_key_name);
@@ -719,7 +719,7 @@ int credis_dbsize(REDIS rhnd)
   return rc;
 }
 
-int credis_expire(REDIS rhnd, char *key, int secs)
+int credis_expire(REDIS rhnd, const char *key, int secs)
 { 
   int rc = cr_sendfandreceive(rhnd, CR_INT, "EXPIRE %s %d\r\n", key, secs);
 
@@ -730,7 +730,7 @@ int credis_expire(REDIS rhnd, char *key, int secs)
   return rc;
 }
 
-int credis_ttl(REDIS rhnd, char *key)
+int credis_ttl(REDIS rhnd, const char *key)
 {
   int rc = cr_sendfandreceive(rhnd, CR_INT, "TTL %s\r\n", key);
 
@@ -740,7 +740,7 @@ int credis_ttl(REDIS rhnd, char *key)
   return rc;
 }
 
-int cr_push(REDIS rhnd, int left, char *key, char *val)
+int cr_push(REDIS rhnd, int left, const char *key, const char *val)
 {
   int rc = cr_sendfandreceive(rhnd, CR_INT, "%s %s %s\r\n", 
                               left==1?"LPUSH":"RPUSH", key, val);
@@ -751,17 +751,17 @@ int cr_push(REDIS rhnd, int left, char *key, char *val)
   return rc;
 }
 
-int credis_rpush(REDIS rhnd, char *key, char *val)
+int credis_rpush(REDIS rhnd, const char *key, const char *val)
 {
   return cr_push(rhnd, 0, key, val);
 }
 
-int credis_lpush(REDIS rhnd, char *key, char *val)
+int credis_lpush(REDIS rhnd, const char *key, const char *val)
 {
   return cr_push(rhnd, 1, key, val);
 }
 
-int credis_llen(REDIS rhnd, char *key)
+int credis_llen(REDIS rhnd, const char *key)
 {
   int rc = cr_sendfandreceive(rhnd, CR_INT, "LLEN %s\r\n", key);
 
@@ -771,7 +771,7 @@ int credis_llen(REDIS rhnd, char *key)
   return rc;
 }
 
-int credis_lrange(REDIS rhnd, char *key, int start, int end, char ***valv)
+int credis_lrange(REDIS rhnd, const char *key, int start, int end, char ***valv)
 {
   int rc;
 
@@ -784,7 +784,7 @@ int credis_lrange(REDIS rhnd, char *key, int start, int end, char ***valv)
   return rc;
 }
 
-int credis_lindex(REDIS rhnd, char *key, int index, char **val)
+int credis_lindex(REDIS rhnd, const char *key, int index, char **val)
 {
   int rc = cr_sendfandreceive(rhnd, CR_BULK, "LINDEX %s %d\r\n", key, index);
 
@@ -794,12 +794,12 @@ int credis_lindex(REDIS rhnd, char *key, int index, char **val)
   return rc;
 }
 
-int credis_lset(REDIS rhnd, char *key, int index, char *val)
+int credis_lset(REDIS rhnd, const char *key, int index, const char *val)
 {
   return  cr_sendfandreceive(rhnd, CR_INT, "LSET %s %d %s\r\n", key, index, val);
 }
 
-int credis_lrem(REDIS rhnd, char *key, int count, char *val)
+int credis_lrem(REDIS rhnd, const char *key, int count, const char *val)
 {
   int rc = cr_sendfandreceive(rhnd, CR_BULK, "LREM %s %d %d\r\n", key, count, val);
 
@@ -809,7 +809,7 @@ int credis_lrem(REDIS rhnd, char *key, int count, char *val)
   return rc;
 }
 
-int cr_pop(REDIS rhnd, int left, char *key, char **val)
+int cr_pop(REDIS rhnd, int left, const char *key, char **val)
 {
   int rc = cr_sendfandreceive(rhnd, CR_BULK, "%s %s\r\n", 
                               left==1?"LPOP":"RPOP", key);
@@ -820,12 +820,12 @@ int cr_pop(REDIS rhnd, int left, char *key, char **val)
   return rc;
 }
 
-int credis_lpop(REDIS rhnd, char *key, char **val)
+int credis_lpop(REDIS rhnd, const char *key, char **val)
 {
   return cr_pop(rhnd, 1, key, val);
 }
 
-int credis_rpop(REDIS rhnd, char *key, char **val)
+int credis_rpop(REDIS rhnd, const char *key, char **val)
 {
   return cr_pop(rhnd, 0, key, val);
 }
@@ -835,7 +835,7 @@ int credis_select(REDIS rhnd, int index)
   return  cr_sendfandreceive(rhnd, CR_INLINE, "SELECT %d\r\n", index);
 }
 
-int credis_move(REDIS rhnd, char *key, int index)
+int credis_move(REDIS rhnd, const char *key, int index)
 {
   int rc = cr_sendfandreceive(rhnd, CR_INT, "MOVE %s %d\r\n", key, index);
 
@@ -856,7 +856,7 @@ int credis_flushall(REDIS rhnd)
   return  cr_sendfandreceive(rhnd, CR_INLINE, "FLUSHALL\r\n");
 }
 
-int credis_sort(REDIS rhnd, char *query, char ***elementv)
+int credis_sort(REDIS rhnd, const char *query, char ***elementv)
 {
   int rc;
 
@@ -908,7 +908,7 @@ int credis_monitor(REDIS rhnd)
   return  cr_sendfandreceive(rhnd, CR_INLINE, "MONITOR\r\n");
 }
 
-int credis_slaveof(REDIS rhnd, char *host, int port)
+int credis_slaveof(REDIS rhnd, const char *host, int port)
 {
   if (host == NULL || port == 0)
     return  cr_sendfandreceive(rhnd, CR_INLINE, "SLAVEOF no one\r\n");

@@ -1,7 +1,7 @@
 /* credis-test.c -- a sample test application using credis (C client library 
  * for Redis)
  *
- * Copyright (c) 2009, Jonas Romfelt <jonas at romfelt dot se>
+ * Copyright (c) 2009-2010, Jonas Romfelt <jonas at romfelt dot se>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -58,6 +58,7 @@ long timer(int reset)
 
 int main(int argc, char **argv) {
   REDIS redis = credis_connect(NULL, 0, 2000);
+  REDIS_INFO info;
   char *val, **valv;
   const char *keyv[] = {"kalle", "adam", "unknown", "bertil", "none"};
   int rc, keyc=5, i;
@@ -114,8 +115,45 @@ int main(int argc, char **argv) {
   for (i = 0; i < rc; i++)
     printf(" % 2d: %s\n", i, valv[i]);
 
-  rc = credis_info(redis, &val);
+  rc = credis_info(redis, &info);
   printf("info returned %d\n", rc);
+  printf(">redis_version: %s\n"                   \
+         ">uptime_in_seconds: %d\n"               \
+         ">uptime_in_days: %d\n"                  \
+         ">connected_clients: %d\n"               \
+         ">connected_slaves: %d\n"                \
+         ">used_memory: %u\n"                     \
+         ">changes_since_last_save: %lld\n"       \
+         ">bgsave_in_progress: %d\n"              \
+         ">last_save_time: %d\n"                  \
+         ">total_connections_received: %lld\n"    \
+         ">total_commands_processed: %lld\n"      \
+         ">role: %d\n",
+         info.redis_version,
+         info.uptime_in_seconds,
+         info.uptime_in_days,
+         info.connected_clients,
+         info.connected_slaves,
+         info.used_memory,
+         info.changes_since_last_save,
+         info.bgsave_in_progress,
+         info.last_save_time,
+         info.total_connections_received,
+         info.total_commands_processed,
+         info.role);
+
+  rc = credis_sadd(redis, "fruits", "banana");
+  printf("sadd returned: %d\n", rc);
+  rc = credis_sismember(redis, "fruits", "banana");
+  printf("sismember returned: %d\n", rc);
+  rc = credis_sadd(redis, "fruits", "apple");
+  printf("sadd returned: %d\n", rc);
+  rc = credis_srem(redis, "fruits", "banana");
+  printf("srem returned: %d\n", rc);
+  rc = credis_sismember(redis, "fruits", "banana");
+  printf("sismember returned: %d\n", rc);
+  rc = credis_srem(redis, "fruits", "orange");
+  printf("srem returned: %d\n", rc);
 
   credis_close(redis);
 

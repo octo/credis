@@ -1,6 +1,6 @@
 /* credis.c -- a C client library for Redis
  *
- * Copyright (c) 2009, Jonas Romfelt <jonas at romfelt dot se>
+ * Copyright (c) 2009-2010, Jonas Romfelt <jonas at romfelt dot se>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -53,6 +53,8 @@
 
 #define CR_BUFFER_SIZE 4096
 #define CR_MULTIBULK_SIZE 64
+
+#define CR_VERSION_STRING_SIZE_STR "32"
 
 #ifdef PRINTDEBUG
 /* add -DPRINTDEBUG to CPPFLAGS in Makefile for debug outputs */
@@ -143,6 +145,9 @@ static int cr_moremem(cr_buffer *buf, int size)
 static int cr_appendstr(cr_buffer *buf, const char *str)
 {
   int rc, avail;
+
+  /* TODO instead of using formatted print use memcpy() and don't
+     blindly add a space before `str' */
 
   avail = buf->size - buf->len;
   rc = snprintf(buf->data + buf->len, avail, " %s", str);
@@ -809,7 +814,7 @@ int credis_lrem(REDIS rhnd, const char *key, int count, const char *val)
   return rc;
 }
 
-int cr_pop(REDIS rhnd, int left, const char *key, char **val)
+static int cr_pop(REDIS rhnd, int left, const char *key, char **val)
 {
   int rc = cr_sendfandreceive(rhnd, CR_BULK, "%s %s\r\n", 
                               left==1?"LPOP":"RPOP", key);
@@ -893,13 +898,46 @@ int credis_shutdown(REDIS rhnd)
   return cr_sendfandreceive(rhnd, CR_INLINE, "SHUTDOWN\r\n");
 }
 
-int credis_info(REDIS rhnd, char **info)
+#define CR_NUMBER_OF_ITEMS 12
+
+int credis_info(REDIS rhnd, REDIS_INFO *info)
 {
   int rc = cr_sendfandreceive(rhnd, CR_BULK, "INFO\r\n");
 
-  if (rc == 0)
-    *info = rhnd->reply.bulk;
-
+  if (rc == 0) {
+    char role[CREDIS_VERSION_STRING_SIZE];
+    rc = sscanf(rhnd->reply.bulk,
+                "redis_version:%"CR_VERSION_STRING_SIZE_STR"s\r\n"     \
+                "uptime_in_seconds:%d\r\n"                             \
+                "uptime_in_days:%d\r\n"                                \
+                "connected_clients:%d\r\n"                             \
+                "connected_slaves:%d\r\n"                              \
+                "used_memory:%u\r\n"                                   \
+                "changes_since_last_save:%lld\r\n"                     \
+                "bgsave_in_progress:%d\r\n"                            \
+                "last_save_time:%d\r\n"                                \
+                "total_connections_received:%lld\r\n"                  \
+                "total_commands_processed:%lld\r\n"                    \
+                "role:%"CR_VERSION_STRING_SIZE_STR"s\r\n",
+                info->redis_version,
+                &(info->uptime_in_seconds),
+                &(info->uptime_in_days),
+                &(info->connected_clients),
+                &(info->connected_slaves),
+                &(info->used_memory),
+                &(info->changes_since_last_save),
+                &(info->bgsave_in_progress),
+                &(info->last_save_time),
+                &(info->total_connections_received),
+                &(info->total_commands_processed),
+                role);
+    
+    if (rc != CR_NUMBER_OF_ITEMS)
+      return CREDIS_ERR_PROTOCOL; /* not enough input items returned */
+    
+    info->role = ((role[0]=='m')?CREDIS_SERVER_MASTER:CREDIS_SERVER_SLAVE);
+  }
+  
   return rc;
 }
 
@@ -914,4 +952,32 @@ int credis_slaveof(REDIS rhnd, const char *host, int port)
     return  cr_sendfandreceive(rhnd, CR_INLINE, "SLAVEOF no one\r\n");
   else
     return  cr_sendfandreceive(rhnd, CR_INLINE, "SLAVEOF %s %d\r\n", host, port);
+}
+
+
+static int cr_setaddrem(REDIS rhnd, const char *cmd, const char *key, const char *member)
+{
+  int rc = cr_sendfandreceive(rhnd, CR_INT, "%s %s %d\r\n%s\r\n", 
+                              cmd, key, strlen(member), member);
+
+  if (rc == 0)
+    if (rhnd->reply.integer == 0)
+      return -1;
+
+  return rc;
+}
+
+int credis_sadd(REDIS rhnd, const char *key, const char *member)
+{
+  return cr_setaddrem(rhnd, "SADD", key, member);
+}
+
+int credis_srem(REDIS rhnd, const char *key, const char *member)
+{
+  return cr_setaddrem(rhnd, "SREM", key, member);
+}
+
+int credis_sismember(REDIS rhnd, const char *key, const char *member)
+{
+  return cr_setaddrem(rhnd, "SISMEMBER", key, member);
 }

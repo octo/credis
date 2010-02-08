@@ -1,6 +1,6 @@
 CFLAGS = -g -O2 -Wall
 LDFLAGS =
-#CPPFLAGS = -DPRINTDEBUG
+CPPFLAGS = -DPRINTDEBUG
 
 # build shared lib under OS X or Linux
 OS = $(shell uname -s)

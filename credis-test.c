@@ -31,6 +31,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/time.h>
 
 #include "credis.h"
@@ -55,6 +56,7 @@ long timer(int reset)
   return 0;
 }
 
+#define DUMMY_DATA "some dummy data string"
 
 int main(int argc, char **argv) {
   REDIS redis = credis_connect(NULL, 0, 10000);
@@ -82,9 +84,10 @@ int main(int argc, char **argv) {
          "benchmark, run: `%s <num>' where <num> is the number\n"\
          "of set-commands to send.\n\n", argv[0]);
 
+  printf("\n\n************* misc info ************************************ \n");
+
   rc = credis_ping(redis);
   printf("ping returned: %d\n", rc);
-
 
   rc = credis_lastsave(redis);
   printf("lastsave returned: %d\n", rc);
@@ -220,6 +223,27 @@ int main(int argc, char **argv) {
   printf("lrange (0, -1) returned: %d\n", rc);
   for (i = 0; i < rc; i++)
     printf(" % 2d: %s\n", i, valv[i]);
+
+  rc = credis_del(redis, "mylist");
+  printf("del returned: %d\n", rc);
+
+  rc = credis_llen(redis, "mylist");
+  printf("length of list: %d\n", rc);
+
+  printf("Adding 200 items to list\n");
+  for (i = 0; i < 200; i++) {
+    rc = credis_rpush(redis, "mylist", DUMMY_DATA);
+    if (rc != 0)
+      printf("rpush returned: %d\n", rc);
+  }
+
+  rc = credis_lrange(redis, "mylist", 0, 200, &valv);
+  printf("lrange (0, 200) returned: %d, verifying data\n", rc);
+  for (i = 0; i < rc; i++) {
+    if (strncmp(valv[i], DUMMY_DATA, strlen(DUMMY_DATA)))
+      printf("returned item (%d) data differs: '%s' != '%s'\n", i, valv[i], DUMMY_DATA);
+    //printf("  % 2d: %s\n", i, valv[i]);
+  }  
 
   credis_close(redis);
 

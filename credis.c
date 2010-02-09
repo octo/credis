@@ -51,8 +51,9 @@
 #define CR_MULTIBULK '*'
 #define CR_INT ':'
 
-#define CR_BUFFER_SIZE 40
-#define CR_MULTIBULK_SIZE 64
+#define CR_BUFFER_SIZE 4096
+#define CR_BUFFER_WATERMARK (CR_BUFFER_SIZE/10)
+#define CR_MULTIBULK_SIZE 256
 
 #define CR_VERSION_STRING_SIZE_STR "32"
 
@@ -110,7 +111,6 @@ static char * cr_findnl(char *buf, int len) {
   return NULL;
 }
 
-
 /* Allocate at least `size' bytes more buffer memory keeping the previously
  * allocated and used memory untouched.
  * Returns:
@@ -134,7 +134,6 @@ static int cr_moremem(cr_buffer *buf, int size)
   buf->size = total;
   return 0;
 }
-
 
 /* Appends a string `str' to the end of buffer `buf'. If available memory
  * in buffer is not enough to hold `str' more memory is allocated to the
@@ -164,7 +163,6 @@ static int cr_appendstr(cr_buffer *buf, const char *str)
   return 0;
 }
 
-
 /* Receives at most `size' bytes from socket `fd' to `buf'. Times out after 
  * `msecs' milliseconds if no data has yet arrived.
  * Returns:
@@ -193,7 +191,6 @@ static int cr_receivedata(int fd, unsigned int msecs, char *buf, int size)
   else
     return -1;  
 }
-
 
 /* Sends `size' bytes from `buf' to socket `fd' and times out after `msecs' 
  * milliseconds if not all data has been sent. 
@@ -232,7 +229,6 @@ static int cr_senddata(int fd, unsigned int msecs, char *buf, int size)
   return sent;
 }
 
-
 /* Buffered read line, returns pointer to zero-terminated string 
  * and length of that string. `start' specifies from which byte
  * to start looking for "\r\n".
@@ -244,20 +240,18 @@ static int cr_readln(REDIS rhnd, int start, char **line)
 {
   cr_buffer *buf = &(rhnd->buf);
   char *nl;
-  int rc, len, avail;
+  int rc, len, avail, more=0;
 
-  if (buf->len == 0 || buf->idx >= buf->len) {
-    buf->idx = 0;
-    buf->len = 0;
-  }
-
-  /* TODO check that start doesn't go out of limit */
-  while ((nl = cr_findnl(buf->data + buf->idx + start, buf->len - buf->idx)) == NULL) {
-    DEBUG("need to read more data");
+  /* do we need more data before we expect to find "\r\n"? */
+  more = buf->idx + start - buf->len;
+  if (more < 0)
+    more = 0;
+  
+  while (more > 0 || (nl = cr_findnl(buf->data + buf->idx + start, buf->len - buf->idx)) == NULL) {
     avail = buf->size - buf->len;
-    if (avail < (CR_BUFFER_SIZE/10)) {
+    if (avail < CR_BUFFER_WATERMARK || avail < more) {
       DEBUG("available buffer memory is low, get more memory");
-      if (cr_moremem(buf, 1))
+      if (cr_moremem(buf, more>0?more:1))
         return CREDIS_ERR_NOMEM;
 
       avail = buf->size - buf->len;
@@ -270,6 +264,11 @@ static int cr_readln(REDIS rhnd, int start, char **line)
       return 0; /* EOF reached, connection terminated */
     else 
       return -1; /* error */
+
+    /* do we need more data before we expect to find "\r\n"? */
+    more = buf->idx + start - buf->len;
+    if (more < 0)
+      more = 0;
   }
 
   *nl = '\0'; /* zero terminate */
@@ -278,39 +277,47 @@ static int cr_readln(REDIS rhnd, int start, char **line)
   len = nl - *line;
   buf->idx = (nl - buf->data) + 2;
 
-  DEBUG("<len=%d, idx=%d> %s", buf->len, buf->idx, *line);
+  DEBUG("<len=%d, idx=%d, start=%d> %s", buf->len, buf->idx, start, *line);
 
   return len;
 }
 
-
 static int cr_receivemultibulk(REDIS rhnd, char *line) 
 {
-  int bnum, blen, i=0;
+  int bnum, blen, i;
 
   bnum = atoi(line);
-
-  if (bnum > rhnd->reply.multibulk.size) {
-    int nsize = (bnum / CR_MULTIBULK_SIZE + 1) * CR_MULTIBULK_SIZE;
-    rhnd->reply.multibulk.bulks = realloc(rhnd->reply.multibulk.bulks, nsize);
-  }
 
   if (bnum == -1) {
     rhnd->reply.multibulk.len = 0; /* no data or key didn't exist */
     return 0;
   }
+  else if (bnum > rhnd->reply.multibulk.size) {
+    char **ptr;
+    int nsize = (bnum / CR_MULTIBULK_SIZE + 1) * CR_MULTIBULK_SIZE;
 
-  for ( ; bnum > 0 && cr_readln(rhnd, 0, &line) > 0; bnum--) {
+    DEBUG("allocate %d x CR_MULTIBULK_SIZE", 
+          (nsize - rhnd->reply.multibulk.size) / CR_MULTIBULK_SIZE);
+    ptr = realloc(rhnd->reply.multibulk.bulks, nsize * sizeof(char *));
+
+    if (ptr == NULL)
+      return CREDIS_ERR_NOMEM;
+
+    rhnd->reply.multibulk.bulks = ptr;
+    rhnd->reply.multibulk.size = nsize;
+  }
+
+  for (i = 0 ; bnum > 0 && cr_readln(rhnd, 0, &line) > 0; i++, bnum--) {
     if (*(line++) != CR_BULK)
       return CREDIS_ERR_PROTOCOL;
     
     blen = atoi(line);
     if (blen == -1)
-      rhnd->reply.multibulk.bulks[i++] = NULL;
+      rhnd->reply.multibulk.bulks[i] = NULL;
     else {
       if (cr_readln(rhnd, blen, &line) != blen)
         return CREDIS_ERR_PROTOCOL;
-      rhnd->reply.multibulk.bulks[i++] = line;
+      rhnd->reply.multibulk.bulks[i] = line;
     }
   }
   
@@ -341,13 +348,11 @@ static int cr_receivebulk(REDIS rhnd, char *line)
   return CREDIS_ERR_PROTOCOL;
 }
 
-
 static int cr_receiveinline(REDIS rhnd, char *line) 
 {
   rhnd->reply.line = line;
   return 0;
 }
-
 
 static int cr_receiveint(REDIS rhnd, char *line) 
 {
@@ -356,13 +361,11 @@ static int cr_receiveint(REDIS rhnd, char *line)
   return 0;
 }
 
-
 static int cr_receiveerror(REDIS rhnd, char *line) 
 {
   rhnd->reply.line = line;
   return CREDIS_ERR_PROTOCOL;
 }
-
 
 static int cr_receivereply(REDIS rhnd, char recvtype) 
 {
@@ -376,7 +379,6 @@ static int cr_receivereply(REDIS rhnd, char recvtype)
     prefix = *(line++);
  
     if (prefix != recvtype && prefix != CR_ERROR)
-      /* TODO empty inbuffer to have a clean start before next command */
       return CREDIS_ERR_PROTOCOL;
 
     switch(prefix) {
@@ -396,7 +398,6 @@ static int cr_receivereply(REDIS rhnd, char recvtype)
   return CREDIS_ERR_RECV;
 }
 
-
 static void cr_delete(REDIS rhnd) 
 {
   if (rhnd->reply.multibulk.bulks != NULL)
@@ -408,7 +409,6 @@ static void cr_delete(REDIS rhnd)
   if (rhnd != NULL)
     free(rhnd);
 }
-
 
 REDIS cr_new(void) 
 {
@@ -427,7 +427,6 @@ REDIS cr_new(void)
 
   return rhnd;
 }
-
 
 /* Send message that has been prepared in message buffer prior to the call
  * to this function. Wait and receive reply. */
@@ -449,7 +448,6 @@ static int cr_sendandreceive(REDIS rhnd, char recvtype)
 
   return cr_receivereply(rhnd, recvtype);
 }
-
 
 /* Prepare message buffer for sending using a printf()-style formatting. */
 static int cr_sendfandreceive(REDIS rhnd, char recvtype, const char *format, ...)
@@ -911,33 +909,33 @@ int credis_info(REDIS rhnd, REDIS_INFO *info)
 
   if (rc == 0) {
     char role[CREDIS_VERSION_STRING_SIZE];
-    rc = sscanf(rhnd->reply.bulk,
-                "redis_version:%"CR_VERSION_STRING_SIZE_STR"s\r\n"     \
-                "uptime_in_seconds:%d\r\n"                             \
-                "uptime_in_days:%d\r\n"                                \
-                "connected_clients:%d\r\n"                             \
-                "connected_slaves:%d\r\n"                              \
-                "used_memory:%u\r\n"                                   \
-                "changes_since_last_save:%lld\r\n"                     \
-                "bgsave_in_progress:%d\r\n"                            \
-                "last_save_time:%d\r\n"                                \
-                "total_connections_received:%lld\r\n"                  \
-                "total_commands_processed:%lld\r\n"                    \
-                "role:%"CR_VERSION_STRING_SIZE_STR"s\r\n",
-                info->redis_version,
-                &(info->uptime_in_seconds),
-                &(info->uptime_in_days),
-                &(info->connected_clients),
-                &(info->connected_slaves),
-                &(info->used_memory),
-                &(info->changes_since_last_save),
-                &(info->bgsave_in_progress),
-                &(info->last_save_time),
-                &(info->total_connections_received),
-                &(info->total_commands_processed),
-                role);
+    int items = sscanf(rhnd->reply.bulk,
+                       "redis_version:%"CR_VERSION_STRING_SIZE_STR"s\r\n" \
+                       "uptime_in_seconds:%d\r\n"                         \
+                       "uptime_in_days:%d\r\n"                            \
+                       "connected_clients:%d\r\n"                         \
+                       "connected_slaves:%d\r\n"                          \
+                       "used_memory:%u\r\n"                               \
+                       "changes_since_last_save:%lld\r\n"                 \
+                       "bgsave_in_progress:%d\r\n"                        \
+                       "last_save_time:%d\r\n"                            \
+                       "total_connections_received:%lld\r\n"              \
+                       "total_commands_processed:%lld\r\n"                \
+                       "role:%"CR_VERSION_STRING_SIZE_STR"s\r\n",
+                       info->redis_version,
+                       &(info->uptime_in_seconds),
+                       &(info->uptime_in_days),
+                       &(info->connected_clients),
+                       &(info->connected_slaves),
+                       &(info->used_memory),
+                       &(info->changes_since_last_save),
+                       &(info->bgsave_in_progress),
+                       &(info->last_save_time),
+                       &(info->total_connections_received),
+                       &(info->total_commands_processed),
+                       role);
     
-    if (rc != CR_NUMBER_OF_ITEMS)
+    if (items != CR_NUMBER_OF_ITEMS)
       return CREDIS_ERR_PROTOCOL; /* not enough input items returned */
     
     info->role = ((role[0]=='m')?CREDIS_SERVER_MASTER:CREDIS_SERVER_SLAVE);

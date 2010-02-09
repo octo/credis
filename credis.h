@@ -110,8 +110,10 @@ int credis_ping(REDIS rhnd);
 
 int credis_set(REDIS rhnd, const char *key, const char *val);
 
+/* returns -1 if the key doesn't exists */
 int credis_get(REDIS rhnd, const char *key, char **val);
 
+/* returns -1 if the key doesn't exists */
 int credis_getset(REDIS rhnd, const char *key, const char *set_val, char **get_val);
 
 /* returns number of values returned in vector `valv'. `keyc' is the number of
@@ -182,6 +184,7 @@ int credis_llen(REDIS rhnd, const char *key);
 /* returns number of elements returned in vector `elementv' */
 int credis_lrange(REDIS rhnd, const char *key, int start, int range, char ***elementv);
 
+/* returns -1 if the key doesn't exists */
 int credis_lindex(REDIS rhnd, const char *key, int index, char **element);
 
 int credis_lset(REDIS rhnd, const char *key, int index, const char *element);
@@ -189,6 +192,26 @@ int credis_lset(REDIS rhnd, const char *key, int index, const char *element);
 /* returns number of elements removed */
 int credis_lrem(REDIS rhnd, const char *key, int count, const char *element);
 
+/* returns -1 if the key doesn't exists */
+int credis_lpop(REDIS rhnd, const char *key, char **val);
+
+/* returns -1 if the key doesn't exists */
+int credis_rpop(REDIS rhnd, const char *key, char **val);
+
+/* TODO
+
+int credis_ltrim(REDIS rhnd, const char *key, int start, int end);
+int credis_sort(REDIS rhnd, const char *key, const char *pattern, int asc, int alpha, ...);
+ */
+
+/* TODO for Redis >= 1.1 
+ * RPOPLPUSH srckey dstkey (Redis >= 1.1)
+ */
+
+/* TODO for Redis >= 1.3.1
+ * BLPOP key1 key2 ... keyN timeout
+ * BRPOP key1 key2 ... keyN timeout
+ */
 
 
 /**** Commands operating on sets *********************************************/

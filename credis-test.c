@@ -57,7 +57,7 @@ long timer(int reset)
 
 
 int main(int argc, char **argv) {
-  REDIS redis = credis_connect(NULL, 0, 2000);
+  REDIS redis = credis_connect(NULL, 0, 10000);
   REDIS_INFO info;
   char *val, **valv;
   const char *keyv[] = {"kalle", "adam", "unknown", "bertil", "none"};
@@ -85,35 +85,9 @@ int main(int argc, char **argv) {
   rc = credis_ping(redis);
   printf("ping returned: %d\n", rc);
 
-  rc = credis_set(redis, "kalle", "kula");
-  printf("set kalle=kula returned: %d\n", rc);
-
-  rc = credis_get(redis, "kalle", &val);
-  printf("get kalle returned: %s\n", val);
-
-  rc = credis_getset(redis, "kalle", "buhu", &val);
-  printf("getset kalle=buhu returned: %s\n", val);
-
-  rc = credis_get(redis, "kalle", &val);
-  printf("get kalle returned: %s\n", val);
-
-  rc = credis_set(redis, "adam", "aaa");
-  rc = credis_set(redis, "bertil", "bbbbbbb");
-  rc = credis_set(redis, "caesar", "cccc");
-  rc = credis_get(redis, "adam", &val);
-  printf("get adam returned: %s\n", val);
-  rc = credis_get(redis, "bertil", &val);
-  printf("get bertil returned: %s\n", val);
-  rc = credis_get(redis, "caesar", &val);
-  printf("get caesar returned: %s\n", val);
 
   rc = credis_lastsave(redis);
   printf("lastsave returned: %d\n", rc);
-
-  rc = credis_mget(redis, keyc, keyv, &valv);
-  printf("mget returned: %d\n", rc);
-  for (i = 0; i < rc; i++)
-    printf(" % 2d: %s\n", i, valv[i]);
 
   rc = credis_info(redis, &info);
   printf("info returned %d\n", rc);
@@ -142,18 +116,110 @@ int main(int argc, char **argv) {
          info.total_commands_processed,
          info.role);
 
+  printf("\n\n************* get/set ************************************ \n");
+
+  rc = credis_set(redis, "kalle", "kula");
+  printf("set kalle=kula returned: %d\n", rc);
+
+  rc = credis_get(redis, "kalle", &val);
+  printf("get kalle returned: %s\n", val);
+
+  rc = credis_getset(redis, "kalle", "buhu", &val);
+  printf("getset kalle=buhu returned: %s\n", val);
+
+  rc = credis_get(redis, "kalle", &val);
+  printf("get kalle returned: %s\n", val);
+
+  rc = credis_del(redis, "kalle");
+  printf("del kalle returned: %d\n", rc);
+
+  rc = credis_get(redis, "kalle", &val);
+  printf("get kalle returned: %s\n", val);
+
+  rc = credis_set(redis, "adam", "aaa");
+  rc = credis_set(redis, "bertil", "bbbbbbb");
+  rc = credis_set(redis, "caesar", "cccc");
+  rc = credis_get(redis, "adam", &val);
+  printf("get adam returned: %s\n", val);
+  rc = credis_get(redis, "bertil", &val);
+  printf("get bertil returned: %s\n", val);
+  rc = credis_get(redis, "caesar", &val);
+  printf("get caesar returned: %s\n", val);
+
+  rc = credis_mget(redis, keyc, keyv, &valv);
+  printf("mget returned: %d\n", rc);
+  for (i = 0; i < rc; i++)
+    printf(" % 2d: %s\n", i, valv[i]);
+
+  printf("\n\n************* sets ************************************ \n");
+
   rc = credis_sadd(redis, "fruits", "banana");
   printf("sadd returned: %d\n", rc);
+
   rc = credis_sismember(redis, "fruits", "banana");
   printf("sismember returned: %d\n", rc);
+
   rc = credis_sadd(redis, "fruits", "apple");
   printf("sadd returned: %d\n", rc);
+
   rc = credis_srem(redis, "fruits", "banana");
   printf("srem returned: %d\n", rc);
+
   rc = credis_sismember(redis, "fruits", "banana");
   printf("sismember returned: %d\n", rc);
+
   rc = credis_srem(redis, "fruits", "orange");
   printf("srem returned: %d\n", rc);
+
+
+  printf("\n\n************* lists ************************************ \n");
+
+  rc = credis_llen(redis, "mylist");
+  printf("length of list: %d\n", rc);
+
+  rc = credis_del(redis, "mylist");
+  printf("del returned: %d\n", rc);
+
+  rc = credis_llen(redis, "mylist");
+  printf("length of list: %d\n", rc);
+
+  rc = credis_rpush(redis, "kalle", "first");
+  printf("rpush returned: %d\n", rc);
+
+  rc = credis_rpush(redis, "mylist", "first");
+  printf("rpush returned: %d\n", rc);
+
+  rc = credis_rpush(redis, "mylist", "right");
+  printf("rpush returned: %d\n", rc);
+
+  rc = credis_lpush(redis, "mylist", "left");
+  printf("lpush returned: %d\n", rc);
+
+  rc = credis_lrange(redis, "mylist", 0, 2, &valv);
+  printf("lrange (0, 2) returned: %d\n", rc);
+  for (i = 0; i < rc; i++)
+    printf(" % 2d: %s\n", i, valv[i]);
+
+  rc = credis_lrange(redis, "mylist", 0, -1, &valv);
+  printf("lrange (0, -1) returned: %d\n", rc);
+  for (i = 0; i < rc; i++)
+    printf(" % 2d: %s\n", i, valv[i]);
+
+  rc = credis_lpush(redis, "mylist", "firstauf sdioafsd kfhksdafhd lskuhafs iaduhfwaeefuih wpeoirh wpea rhweiurh wiaufhsdiaufh sdlakjfhsdlkahf sldkahf lsadfhlsdha fsadlfk hsdalkfh sldkafhlsakhf sklhaflkhasflkhaslkfhsakfh sakjf lskafh lskajfh lskadfh salifuhsdla kjfh lskahfsdlkfh lskajf lksajfh jafh laskjfh laskfh lkasjfh lkashf laksdhf lkasf lkajsf hlkasjfh laksjfh kljasf kasjfh klajsfh kjhsa flkasf laskfh lkas fkl shfklajshfweirywepiury9p428yrhfalisbvjraotli784yq3pt9y8hgaflgoa9rty8pa9f hp9r8ayt8 sr");
+  printf("rpush returned: %d\n", rc);
+
+  rc = credis_lrange(redis, "mylist", 0, 0, &valv);
+  printf("lrange (0, 0) returned: %d\n", rc);
+  for (i = 0; i < rc; i++)
+    printf(" % 2d: %s\n", i, valv[i]);
+
+  rc = credis_llen(redis, "mylist");
+  printf("length of list: %d\n", rc);
+
+  rc = credis_lrange(redis, "not_exists", 0, -1, &valv);
+  printf("lrange (0, -1) returned: %d\n", rc);
+  for (i = 0; i < rc; i++)
+    printf(" % 2d: %s\n", i, valv[i]);
 
   credis_close(redis);
 

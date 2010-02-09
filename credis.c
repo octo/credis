@@ -51,7 +51,7 @@
 #define CR_MULTIBULK '*'
 #define CR_INT ':'
 
-#define CR_BUFFER_SIZE 4096
+#define CR_BUFFER_SIZE 40
 #define CR_MULTIBULK_SIZE 64
 
 #define CR_VERSION_STRING_SIZE_STR "32"
@@ -295,7 +295,12 @@ static int cr_receivemultibulk(REDIS rhnd, char *line)
     rhnd->reply.multibulk.bulks = realloc(rhnd->reply.multibulk.bulks, nsize);
   }
 
-  for ( ; bnum && cr_readln(rhnd, 0, &line) > 0; bnum--) {
+  if (bnum == -1) {
+    rhnd->reply.multibulk.len = 0; /* no data or key didn't exist */
+    return 0;
+  }
+
+  for ( ; bnum > 0 && cr_readln(rhnd, 0, &line) > 0; bnum--) {
     if (*(line++) != CR_BULK)
       return CREDIS_ERR_PROTOCOL;
     
@@ -324,6 +329,10 @@ static int cr_receivebulk(REDIS rhnd, char *line)
   assert(line != NULL);
 
   blen = atoi(line);
+  if (blen == -1) {
+    rhnd->reply.bulk = NULL; /* key didn't exist */
+    return 0;
+  }
   if (cr_readln(rhnd, blen, &line) >= 0) {
     rhnd->reply.bulk = line;
     return 0;
@@ -536,7 +545,8 @@ int credis_get(REDIS rhnd, const char *key, char **val)
   int rc = cr_sendfandreceive(rhnd, CR_BULK, "GET %s\r\n", key);
 
   if (rc == 0)
-    *val = rhnd->reply.bulk;
+    if ((*val = rhnd->reply.bulk) == NULL)
+      return -1;
 
   return rc;
 }
@@ -547,7 +557,8 @@ int credis_getset(REDIS rhnd, const char *key, const char *set_val, char **get_v
                               key, strlen(set_val), set_val);
 
   if (rc == 0)
-    *get_val = rhnd->reply.bulk;
+    if ((*get_val = rhnd->reply.bulk) == NULL)
+      return -1;
 
   return rc;
 }
@@ -749,13 +760,8 @@ int credis_ttl(REDIS rhnd, const char *key)
 
 int cr_push(REDIS rhnd, int left, const char *key, const char *val)
 {
-  int rc = cr_sendfandreceive(rhnd, CR_INT, "%s %s %d\r\n%s\r\n", 
-                              left==1?"LPUSH":"RPUSH", key, strlen(val), val);
-
-  if (rc == 0) 
-    rc = rhnd->reply.integer;
-
-  return rc;
+  return cr_sendfandreceive(rhnd, CR_INLINE, "%s %s %d\r\n%s\r\n", 
+                            left==1?"LPUSH":"RPUSH", key, strlen(val), val);
 }
 
 int credis_rpush(REDIS rhnd, const char *key, const char *val)
@@ -795,8 +801,9 @@ int credis_lindex(REDIS rhnd, const char *key, int index, char **val)
 {
   int rc = cr_sendfandreceive(rhnd, CR_BULK, "LINDEX %s %d\r\n", key, index);
 
-  if (rc == 0) 
-    *val = rhnd->reply.bulk;
+  if (rc == 0)
+    if ((*val = rhnd->reply.bulk) == NULL)
+      return -1;
 
   return rc;
 }
@@ -808,12 +815,7 @@ int credis_lset(REDIS rhnd, const char *key, int index, const char *val)
 
 int credis_lrem(REDIS rhnd, const char *key, int count, const char *val)
 {
-  int rc = cr_sendfandreceive(rhnd, CR_BULK, "LREM %s %d %d\r\n", key, count, val);
-
-  if (rc == 0)
-    rc = rhnd->reply.integer;
-
-  return rc;
+  return cr_sendfandreceive(rhnd, CR_INT, "LREM %s %d %d\r\n", key, count, val);
 }
 
 static int cr_pop(REDIS rhnd, int left, const char *key, char **val)
@@ -821,8 +823,9 @@ static int cr_pop(REDIS rhnd, int left, const char *key, char **val)
   int rc = cr_sendfandreceive(rhnd, CR_BULK, "%s %s\r\n", 
                               left==1?"LPOP":"RPOP", key);
 
-  if (rc == 0) 
-    *val = rhnd->reply.bulk;
+  if (rc == 0)
+    if ((*val = rhnd->reply.bulk) == NULL)
+      return -1;
 
   return rc;
 }

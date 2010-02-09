@@ -646,7 +646,9 @@ int credis_exists(REDIS rhnd, const char *key)
 
 int credis_del(REDIS rhnd, const char *key)
 {
-  int rc = cr_sendfandreceive(rhnd, CR_INT, "DELETE %s\r\n", key);
+  /* TODO it should be possible to remove multiple keys 
+     at once: DEL key1 key2 ... keyN */
+  int rc = cr_sendfandreceive(rhnd, CR_INT, "DEL %s\r\n", key);
 
   if (rc == 0)
     if (rhnd->reply.integer == 0)
@@ -747,8 +749,8 @@ int credis_ttl(REDIS rhnd, const char *key)
 
 int cr_push(REDIS rhnd, int left, const char *key, const char *val)
 {
-  int rc = cr_sendfandreceive(rhnd, CR_INT, "%s %s %s\r\n", 
-                              left==1?"LPUSH":"RPUSH", key, val);
+  int rc = cr_sendfandreceive(rhnd, CR_INT, "%s %s %d\r\n%s\r\n", 
+                              left==1?"LPUSH":"RPUSH", key, strlen(val), val);
 
   if (rc == 0) 
     rc = rhnd->reply.integer;

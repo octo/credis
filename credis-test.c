@@ -56,12 +56,25 @@ long timer(int reset)
   return 0;
 }
 
+unsigned long getrandom(unsigned long max)
+{
+  return (1 + (unsigned long) ( ((double)max) * (rand() / (RAND_MAX + 1.0))));
+}
+
+void randomize()
+{
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  srand(tv.tv_sec * 1000 + tv.tv_usec / 1000);
+}
+
 #define DUMMY_DATA "some dummy data string"
+#define LONG_DATA 50000
 
 int main(int argc, char **argv) {
   REDIS redis = credis_connect(NULL, 0, 10000);
   REDIS_INFO info;
-  char *val, **valv;
+  char *val, **valv, lstr[50000];
   const char *keyv[] = {"kalle", "adam", "unknown", "bertil", "none"};
   int rc, keyc=5, i;
 
@@ -127,6 +140,7 @@ int main(int argc, char **argv) {
   rc = credis_get(redis, "kalle", &val);
   printf("get kalle returned: %s\n", val);
 
+
   rc = credis_getset(redis, "kalle", "buhu", &val);
   printf("getset kalle=buhu returned: %s\n", val);
 
@@ -153,6 +167,7 @@ int main(int argc, char **argv) {
   printf("mget returned: %d\n", rc);
   for (i = 0; i < rc; i++)
     printf(" % 2d: %s\n", i, valv[i]);
+
 
   printf("\n\n************* sets ************************************ \n");
 
@@ -208,13 +223,16 @@ int main(int argc, char **argv) {
   for (i = 0; i < rc; i++)
     printf(" % 2d: %s\n", i, valv[i]);
 
-  rc = credis_lpush(redis, "mylist", "firstauf sdioafsd kfhksdafhd lskuhafs iaduhfwaeefuih wpeoirh wpea rhweiurh wiaufhsdiaufh sdlakjfhsdlkahf sldkahf lsadfhlsdha fsadlfk hsdalkfh sldkafhlsakhf sklhaflkhasflkhaslkfhsakfh sakjf lskafh lskajfh lskadfh salifuhsdla kjfh lskahfsdlkfh lskajf lksajfh jafh laskjfh laskfh lkasjfh lkashf laksdhf lkasf lkajsf hlkasjfh laksjfh kljasf kasjfh klajsfh kjhsa flkasf laskfh lkas fkl shfklajshfweirywepiury9p428yrhfalisbvjraotli784yq3pt9y8hgaflgoa9rty8pa9f hp9r8ayt8 sr");
+  /* generate some test data */
+  randomize();
+  for (i = 0; i < LONG_DATA; i++)
+    lstr[i] = ' ' + getrandom('~' - ' ');
+  lstr[i-1] = 0;
+  rc = credis_lpush(redis, "mylist", lstr);
   printf("rpush returned: %d\n", rc);
 
   rc = credis_lrange(redis, "mylist", 0, 0, &valv);
-  printf("lrange (0, 0) returned: %d\n", rc);
-  for (i = 0; i < rc; i++)
-    printf(" % 2d: %s\n", i, valv[i]);
+  printf("lrange (0, 0) returned: %d, strncmp() returend %d\n", rc, strncmp(valv[0], lstr, LONG_DATA-1));
 
   rc = credis_llen(redis, "mylist");
   printf("length of list: %d\n", rc);
@@ -232,18 +250,22 @@ int main(int argc, char **argv) {
 
   printf("Adding 200 items to list\n");
   for (i = 0; i < 200; i++) {
-    rc = credis_rpush(redis, "mylist", DUMMY_DATA);
+    char str[100];
+    sprintf(str, "%d%s%d", i, DUMMY_DATA, i);
+    rc = credis_rpush(redis, "mylist", str);
     if (rc != 0)
       printf("rpush returned: %d\n", rc);
   }
 
   rc = credis_lrange(redis, "mylist", 0, 200, &valv);
-  printf("lrange (0, 200) returned: %d, verifying data\n", rc);
+  printf("lrange (0, 200) returned: %d, verifying data ... ", rc);
   for (i = 0; i < rc; i++) {
-    if (strncmp(valv[i], DUMMY_DATA, strlen(DUMMY_DATA)))
-      printf("returned item (%d) data differs: '%s' != '%s'\n", i, valv[i], DUMMY_DATA);
-    //printf("  % 2d: %s\n", i, valv[i]);
+    char str[100];
+    sprintf(str, "%d%s%d", i, DUMMY_DATA, i);
+    if (strncmp(valv[i], str, strlen(str)))
+      printf("\nreturned item (%d) data differs: '%s' != '%s'", i, valv[i], str);
   }  
+  printf("all data verified!\n");
 
   credis_close(redis);
 

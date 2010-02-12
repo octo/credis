@@ -52,10 +52,13 @@
 #define CR_INT ':'
 
 #define CR_BUFFER_SIZE 4096
-#define CR_BUFFER_WATERMARK (CR_BUFFER_SIZE/10)
+#define CR_BUFFER_WATERMARK ((CR_BUFFER_SIZE)/10+1)
 #define CR_MULTIBULK_SIZE 256
 
-#define CR_VERSION_STRING_SIZE_STR "32"
+#define _STRINGIF(arg) #arg
+#define STRINGIFY(arg) _STRINGIF(arg)
+
+#define CR_VERSION_STRING_SIZE_STR STRINGIFY(CREDIS_VERSION_STRING_SIZE)
 
 #ifdef PRINTDEBUG
 /* add -DPRINTDEBUG to CPPFLAGS in Makefile for debug outputs */
@@ -78,6 +81,7 @@ typedef struct _cr_buffer {
 
 typedef struct _cr_multibulk { 
   char **bulks; 
+  int *idxs;
   int size;
   int len; 
 } cr_multibulk;
@@ -111,8 +115,8 @@ static char * cr_findnl(char *buf, int len) {
   return NULL;
 }
 
-/* Allocate at least `size' bytes more buffer memory keeping the previously
- * allocated and used memory untouched.
+/* Allocate at least `size' bytes more buffer memory, keeping content of
+ * previously allocated memory untouched.
  * Returns:
  *   0  on success
  *  -1  on error, i.e. more memory not available */
@@ -135,28 +139,57 @@ static int cr_moremem(cr_buffer *buf, int size)
   return 0;
 }
 
+/* Allocate at least `size' more multibulk storage, keeping content of 
+ * previously allocated memory untouched.
+ * Returns:
+ *   0  on success
+ *  -1  on error, i.e. more memory not available */
+static int cr_morebulk(cr_multibulk *mb, int size) 
+{
+  char **cptr;
+  int *iptr;
+  int total, n;
+
+  n = (size / CR_MULTIBULK_SIZE + 1) * CR_MULTIBULK_SIZE;
+  total = mb->size + n;
+
+  DEBUG("allocate %d x CR_MULTIBULK_SIZE, total %d (%lu bytes)", 
+        n, total, total * ((sizeof(char *)+sizeof(int))));
+  cptr = realloc(mb->bulks, total * sizeof(char *));
+  iptr = realloc(mb->idxs, total * sizeof(int));
+
+  if (cptr == NULL || iptr == NULL)
+    return CREDIS_ERR_NOMEM;
+
+  mb->bulks = cptr;
+  mb->idxs = iptr;
+  mb->size = total;
+  return 0;
+}
+
 /* Appends a string `str' to the end of buffer `buf'. If available memory
  * in buffer is not enough to hold `str' more memory is allocated to the
  * buffer. 
  * Returns:
  *   0  on success
  *  <0  on error, i.e. more memory not available */
-static int cr_appendstr(cr_buffer *buf, const char *str)
+static int cr_appendstr(cr_buffer *buf, const char *str, int space)
 {
   int rc, avail;
+  char *format = (space==0?"%s":" %s");
 
   /* TODO instead of using formatted print use memcpy() and don't
      blindly add a space before `str' */
 
   avail = buf->size - buf->len;
-  rc = snprintf(buf->data + buf->len, avail, " %s", str);
+  rc = snprintf(buf->data + buf->len, avail, format, str);
   if (rc >= avail) {
     DEBUG("truncated, get more memory and try again");
     if (cr_moremem(buf, rc - avail + 1))
       return CREDIS_ERR_NOMEM;
     
     avail = buf->size - buf->len;
-    rc = snprintf(buf->data + buf->len, avail, " %s", str);
+    rc = snprintf(buf->data + buf->len, avail, format, str);
   }
   buf->len += rc;
 
@@ -233,21 +266,22 @@ static int cr_senddata(int fd, unsigned int msecs, char *buf, int size)
  * and length of that string. `start' specifies from which byte
  * to start looking for "\r\n".
  * Returns:
- *  >0  length of string to which pointer `line' refers
+ *  >0  length of string to which pointer `line' refers. `idx' is
+ *      an optional pointer for returning start index of line with
+ *      respect to buffer.
  *   0  connection to Redis server was closed
  *  -1  on error, i.e. a string is not available */
-static int cr_readln(REDIS rhnd, int start, char **line)
+static int cr_readln(REDIS rhnd, int start, char **line, int *idx)
 {
   cr_buffer *buf = &(rhnd->buf);
   char *nl;
-  int rc, len, avail, more=0;
+  int rc, len, avail, more;
 
   /* do we need more data before we expect to find "\r\n"? */
-  more = buf->idx + start - buf->len;
-  if (more < 0)
+  if ((more = buf->idx + start + 2 - buf->len) < 0)
     more = 0;
   
-  while (more > 0 || (nl = cr_findnl(buf->data + buf->idx + start, buf->len - buf->idx)) == NULL) {
+  while (more > 0 || (nl = cr_findnl(buf->data + buf->idx + start, buf->len - (buf->idx + start))) == NULL) {
     avail = buf->size - buf->len;
     if (avail < CR_BUFFER_WATERMARK || avail < more) {
       DEBUG("available buffer memory is low, get more memory");
@@ -258,33 +292,36 @@ static int cr_readln(REDIS rhnd, int start, char **line)
     }
 
     rc = cr_receivedata(rhnd->fd, rhnd->timeout, buf->data + buf->len, avail);
-    if (rc > 0)
+    if (rc > 0) {
+      DEBUG("received %d bytes: %s", rc, buf->data + buf->len);
       buf->len += rc;
+    }
     else if (rc == 0)
       return 0; /* EOF reached, connection terminated */
     else 
       return -1; /* error */
 
     /* do we need more data before we expect to find "\r\n"? */
-    more = buf->idx + start - buf->len;
-    if (more < 0)
+    if ((more = buf->idx + start + 2 - buf->len) < 0)
       more = 0;
   }
 
   *nl = '\0'; /* zero terminate */
 
   *line = buf->data + buf->idx;
+  if (idx)
+    *idx = buf->idx;
   len = nl - *line;
-  buf->idx = (nl - buf->data) + 2;
+  buf->idx = (nl - buf->data) + 2; /* skip "\r\n" */
 
-  DEBUG("<len=%d, idx=%d, start=%d> %s", buf->len, buf->idx, start, *line);
+  DEBUG("size=%d, len=%d, idx=%d, start=%d, line=%s", buf->size, buf->len, buf->idx, start, *line);
 
   return len;
 }
 
 static int cr_receivemultibulk(REDIS rhnd, char *line) 
 {
-  int bnum, blen, i;
+  int bnum, blen, i, rc=0, idx;
 
   bnum = atoi(line);
 
@@ -293,39 +330,39 @@ static int cr_receivemultibulk(REDIS rhnd, char *line)
     return 0;
   }
   else if (bnum > rhnd->reply.multibulk.size) {
-    char **ptr;
-    int nsize = (bnum / CR_MULTIBULK_SIZE + 1) * CR_MULTIBULK_SIZE;
-
-    DEBUG("allocate %d x CR_MULTIBULK_SIZE", 
-          (nsize - rhnd->reply.multibulk.size) / CR_MULTIBULK_SIZE);
-    ptr = realloc(rhnd->reply.multibulk.bulks, nsize * sizeof(char *));
-
-    if (ptr == NULL)
+    DEBUG("available multibulk storage is low, get more memory");
+    if (cr_morebulk(&(rhnd->reply.multibulk), bnum - rhnd->reply.multibulk.size))
       return CREDIS_ERR_NOMEM;
-
-    rhnd->reply.multibulk.bulks = ptr;
-    rhnd->reply.multibulk.size = nsize;
   }
 
-  for (i = 0 ; bnum > 0 && cr_readln(rhnd, 0, &line) > 0; i++, bnum--) {
+  for (i = 0; bnum > 0 && (rc = cr_readln(rhnd, 0, &line, NULL)) > 0; i++, bnum--) {
     if (*(line++) != CR_BULK)
       return CREDIS_ERR_PROTOCOL;
     
     blen = atoi(line);
     if (blen == -1)
-      rhnd->reply.multibulk.bulks[i] = NULL;
+      rhnd->reply.multibulk.idxs[i] = -1;
     else {
-      if (cr_readln(rhnd, blen, &line) != blen)
+      if ((rc = cr_readln(rhnd, blen, &line, &idx)) != blen)
         return CREDIS_ERR_PROTOCOL;
-      rhnd->reply.multibulk.bulks[i] = line;
+
+      rhnd->reply.multibulk.idxs[i] = idx;
     }
   }
   
-  if (bnum != 0)
+  if (bnum != 0) {
+    DEBUG("bnum != 0, bnum=%d, rc=%d", bnum, rc);
     return CREDIS_ERR_PROTOCOL;
+  }
 
   rhnd->reply.multibulk.len = i;
-  
+  for (i = 0; i < rhnd->reply.multibulk.len; i++) {
+    if (rhnd->reply.multibulk.idxs[i] > 0)
+      rhnd->reply.multibulk.bulks[i] = rhnd->buf.data + rhnd->reply.multibulk.idxs[i];
+    else
+      rhnd->reply.multibulk.bulks[i] = NULL;
+  }
+
   return 0;
 }
 
@@ -340,7 +377,7 @@ static int cr_receivebulk(REDIS rhnd, char *line)
     rhnd->reply.bulk = NULL; /* key didn't exist */
     return 0;
   }
-  if (cr_readln(rhnd, blen, &line) >= 0) {
+  if (cr_readln(rhnd, blen, &line, NULL) >= 0) {
     rhnd->reply.bulk = line;
     return 0;
   }
@@ -375,7 +412,7 @@ static int cr_receivereply(REDIS rhnd, char recvtype)
   rhnd->buf.len = 0;
   rhnd->buf.idx = 0;
 
-  if (cr_readln(rhnd, 0, &line) > 0) {
+  if (cr_readln(rhnd, 0, &line, NULL) > 0) {
     prefix = *(line++);
  
     if (prefix != recvtype && prefix != CR_ERROR)
@@ -402,6 +439,8 @@ static void cr_delete(REDIS rhnd)
 {
   if (rhnd->reply.multibulk.bulks != NULL)
     free(rhnd->reply.multibulk.bulks);
+  if (rhnd->reply.multibulk.idxs != NULL)
+    free(rhnd->reply.multibulk.idxs);
   if (rhnd->buf.data != NULL)
     free(rhnd->buf.data);
   if (rhnd->ip != NULL)
@@ -417,7 +456,8 @@ REDIS cr_new(void)
   if ((rhnd = calloc(sizeof(cr_redis), 1)) == NULL ||
       (rhnd->ip = malloc(32)) == NULL ||
       (rhnd->buf.data = malloc(CR_BUFFER_SIZE)) == NULL ||
-      (rhnd->reply.multibulk.bulks = malloc(sizeof(char *)*CR_MULTIBULK_SIZE)) == NULL) {
+      (rhnd->reply.multibulk.bulks = malloc(sizeof(char *)*CR_MULTIBULK_SIZE)) == NULL ||
+      (rhnd->reply.multibulk.idxs = malloc(sizeof(int)*CR_MULTIBULK_SIZE)) == NULL) {
     cr_delete(rhnd);
     return NULL;   
   }
@@ -578,11 +618,11 @@ int credis_mget(REDIS rhnd, int keyc, const char **keyv, char ***valv)
 
   buf->len = snprintf(buf->data, buf->size, "MGET");
   for (i = 0; i < keyc; i++) {
-    if ((rc = cr_appendstr(buf, keyv[i])) != 0)
+    if ((rc = cr_appendstr(buf, keyv[i], 1)) != 0)
       return rc;
   }
 
-  if ((rc = cr_appendstr(buf, "\r\n")) != 0)
+  if ((rc = cr_appendstr(buf, "\r\n", 0)) != 0)
     return rc;
 
   if ((rc = cr_sendandreceive(rhnd, CR_MULTIBULK)) == 0) {
@@ -956,7 +996,6 @@ int credis_slaveof(REDIS rhnd, const char *host, int port)
   else
     return  cr_sendfandreceive(rhnd, CR_INLINE, "SLAVEOF %s %d\r\n", host, port);
 }
-
 
 static int cr_setaddrem(REDIS rhnd, const char *cmd, const char *key, const char *member)
 {

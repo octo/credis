@@ -35,6 +35,36 @@
 extern "C" {
 #endif
 
+/* Functions below should map quite nicely to Redis 1.02 command set. 
+ * Refer to the official Redis documentation for further explanation of 
+ * each command. See credis examples that show how functions can be used.
+ * Here is a brief example that connects to a Redis server and sets value 
+ * of key `fruit' to `banana': 
+ *
+ *    REDIS rh = credis_connect("localhost", 6789, 2000);
+ *    credis_set(rh, "fruit", "banana");
+ *    credis_close(rh);
+ *
+ * In general, functions return 0 on success or a negative value on
+ * error. Refer to CREDIS_ERR_* codes. The return code -1 is typically 
+ * used when for instance a key is not found. 
+ *
+ * IMPORTANT! Memory buffers are allocated, used and managed by credis 
+ * internally. Subsequent calls to credis functions _will_ destroy the 
+ * data to which returned values reference to. If for instance the 
+ * returned value by a call to credis_get() is to be used later in the 
+ * program, a strdup() is highly recommended. However, each `REDIS' 
+ * handle has its own state and manages its own memory buffer 
+ * independently. That means that one of two handles can be destroyed
+ * while the other keeps its connection and data.
+ * 
+ * TODO
+ *  - Currently only support for zero-terminated strings, not for storing 
+ *    abritary binary data as bulk data. Basically an API issue since it
+ *    is partially supported internally.
+ *  - Support for Redis >= 1.1 protocol
+ */
+
 /* handle to a Redis server connection */
 typedef struct _cr_redis* REDIS;
 
@@ -74,24 +104,9 @@ typedef struct _cr_info {
 } REDIS_INFO;
 
 
-/* Functions below should map quite nicely to redis command set. Refer 
- * to the official Redis documentation for further explanation of each 
- * command. See credis examples on how functions can be used. 
- *
- * IMPORTANT! Memory buffers are allocated and used by credis. Subsequent
- * calls to credis functions _will_ destroy the data to which returned
- * values reference to. If for instance the returned value by a call to 
- * credis_get() is to be used later in the program, a strdup() is highly 
- * recommended. 
- *
- * TODO
- *  - currently only support for zero-terminated strings, not for storing 
- *    abritary binary data as bulk data
- *  - commands for sets are partially implemented
+/*
+ * Connection handling
  */
-
-
-/**** Connection handling ****************************************************/
 
 /* setting host to NULL will use "localhost". setting port to 0 will use 
  * default port 6379 */
@@ -105,8 +120,9 @@ int credis_auth(REDIS rhnd, const char *password);
 
 int credis_ping(REDIS rhnd);
 
-
-/**** Commands operating on string values ************************************/
+/* 
+ * Commands operating on string values 
+ */
 
 int credis_set(REDIS rhnd, const char *key, const char *val);
 
@@ -120,14 +136,8 @@ int credis_getset(REDIS rhnd, const char *key, const char *set_val, char **get_v
  * keys stored in `keyv'. */
 int credis_mget(REDIS rhnd, int keyc, const char **keyv, char ***valv);
 
-/* returns -1 if the key already exists */
+/* returns -1 if the key already exists and hence not set */
 int credis_setnx(REDIS rhnd, const char *key, const char *val);
-
-/* TODO for Redis >= 1.1 
- *
- * MSET key1 value1 key2 value2 ... keyN valueN set a multiple keys to multiple values in a single atomic operation
- * MSETNX key1 value1 key2 value2 ... keyN valueN set a multiple keys to multiple values in a single atomic operation if none of
- */
 
 int credis_incr(REDIS rhnd, const char *key, int *new_val);
 
@@ -143,12 +153,18 @@ int credis_exists(REDIS rhnd, const char *key);
 /* returns -1 if the key doesn't exists and 0 if it was removed */
 int credis_del(REDIS rhnd, const char *key);
 
-/* returns type, refer to CREDIS_TYPE_* definitions */
+/* returns type, refer to CREDIS_TYPE_* defines */
 int credis_type(REDIS rhnd, const char *key);
 
+/* TODO for Redis >= 1.1 
+ * MSET key1 value1 key2 value2 ... keyN valueN set a multiple keys to multiple values in a single atomic operation
+ * MSETNX key1 value1 key2 value2 ... keyN valueN set a multiple keys to multiple values in a single atomic operation if none of
+ * DEL key1 key2 ... keyN remove multiple keys 
+ */
 
-
-/**** Commands operating on key space ****************************************/
+/*
+ * Commands operating on key space 
+ */
 
 /* returns number of keys returned in vector `keyv' */
 int credis_keys(REDIS rhnd, const char *pattern, char ***keyv);
@@ -167,12 +183,13 @@ int credis_dbsize(REDIS rhnd);
    an associated timeout or key does not exist */
 int credis_expire(REDIS rhnd, const char *key, int secs);
 
-/* returns seconds or -1 if key does not have expire set */
+/* returns time to live seconds or -1 if key does not exists or does not 
+ * have expire set */
 int credis_ttl(REDIS rhnd, const char *key);
 
-
-
-/**** Commands operating on lists ********************************************/
+/*
+ * Commands operating on lists 
+ */
 
 int credis_rpush(REDIS rhnd, const char *key, const char *element);
 
@@ -183,6 +200,8 @@ int credis_llen(REDIS rhnd, const char *key);
 
 /* returns number of elements returned in vector `elementv' */
 int credis_lrange(REDIS rhnd, const char *key, int start, int range, char ***elementv);
+
+int credis_ltrim(REDIS rhnd, const char *key, int start, int end);
 
 /* returns -1 if the key doesn't exists */
 int credis_lindex(REDIS rhnd, const char *key, int index, char **element);
@@ -198,23 +217,17 @@ int credis_lpop(REDIS rhnd, const char *key, char **val);
 /* returns -1 if the key doesn't exists */
 int credis_rpop(REDIS rhnd, const char *key, char **val);
 
-/* TODO
-
-int credis_ltrim(REDIS rhnd, const char *key, int start, int end);
-int credis_sort(REDIS rhnd, const char *key, const char *pattern, int asc, int alpha, ...);
- */
-
 /* TODO for Redis >= 1.1 
- * RPOPLPUSH srckey dstkey (Redis >= 1.1)
- */
-
-/* TODO for Redis >= 1.3.1
+ * RPOPLPUSH srckey dstkey 
+ *
+ * TODO for Redis >= 1.3.1
  * BLPOP key1 key2 ... keyN timeout
  * BRPOP key1 key2 ... keyN timeout
  */
 
-
-/**** Commands operating on sets *********************************************/
+/*
+ * Commands operating on sets 
+ */
 
 /* returns -1 if the given member was already a member of the set */
 int credis_sadd(REDIS rhnd, const char *key, const char *member);
@@ -225,23 +238,47 @@ int credis_srem(REDIS rhnd, const char *key, const char *member);
 /* returns -1 if the key doesn't exists and 0 if it does */
 int credis_sismember(REDIS rhnd, const char *key, const char *member);
 
-/* TODO
- *
- * SPOP key Remove and return (pop) a random element from the Set value at key
- * SMOVE srckey dstkey member Move the specified member from one Set to another atomically
- * SCARD key Return the number of elements (the cardinality) of the Set at key
- * SINTER key1 key2 ... keyN Return the intersection between the Sets stored at key1, key2, ..., keyN
- * SINTERSTORE dstkey key1 key2 ... keyN Compute the intersection between the Sets stored at key1, key2, ..., keyN, and store the resulting Set at dstkey
- * SUNION key1 key2 ... keyN Return the union between the Sets stored at key1, key2, ..., keyN
- * SUNIONSTORE dstkey key1 key2 ... keyN Compute the union between the Sets stored at key1, key2, ..., keyN, and store the resulting Set at dstkey
- * SDIFF key1 key2 ... keyN Return the difference between the Set stored at key1 and all the Sets key2, ..., keyN
- * SDIFFSTORE dstkey key1 key2 ... keyN Compute the difference between the Set key1 and all the Sets key2, ..., keyN, and store the resulting Set at dstkey
- * SMEMBERS key Return all the members of the Set value at key
+/* returns -1 if the given key doesn't exists else value is returned in `member' */
+int credis_spop(REDIS rhnd, const char *key, char **member);
+
+/* returns -1 if the member doesn't exists in the source set */
+int credis_smove(REDIS rhnd, const char *sourcekey, const char *destkey, 
+                 const char *member);
+
+/* returns cardinality (number of members) or 0 if the given key doesn't exists */
+int credis_scard(REDIS rhnd, const char *key);
+
+/* returns number of members returned in vector `members'. `keyc' is the number of
+ * keys stored in `keyv'. */
+int credis_sinter(REDIS rhnd, int keyc, const char **keyv, char ***members);
+
+/* `keyc' is the number of keys stored in `keyv' */
+int credis_sinterstore(REDIS rhnd, const char *destkey, int keyc, const char **keyv);
+
+/* returns number of members returned in vector `members'. `keyc' is the number of
+ * keys stored in `keyv'. */
+int credis_sunion(REDIS rhnd, int keyc, const char **keyv, char ***members);
+
+/* `keyc' is the number of keys stored in `keyv' */
+int credis_sunionstore(REDIS rhnd, const char *destkey, int keyc, const char **keyv);
+
+/* returns number of members returned in vector `members'. `keyc' is the number of
+ * keys stored in `keyv'. */
+int credis_sdiff(REDIS rhnd, int keyc, const char **keyv, char ***members);
+
+/* `keyc' is the number of keys stored in `keyv' */
+int credis_sdiffstore(REDIS rhnd, const char *destkey, int keyc, const char **keyv);
+
+/* returns number of members returned in vector `members' */
+int credis_smembers(REDIS rhnd, const char *key, char ***members);
+
+/* TODO Redis >= 1.1
  * SRANDMEMBER key Return a random member of the Set value at key
  */
 
-
-/**** Multiple databases handling commands ***********************************/
+/*
+ * Multiple databases handling commands 
+ */
 
 int credis_select(REDIS rhnd, int index);
 
@@ -253,14 +290,16 @@ int credis_flushdb(REDIS rhnd);
 
 int credis_flushall(REDIS rhnd);
 
-
-/**** Sorting ***************************************************************/
+/*
+ * Sorting 
+ */
 
 /* returns number of elements returned in vector `elementv' */
 int credis_sort(REDIS rhnd, const char *query, char ***elementv);
 
-
-/**** Persistence control commands ******************************************/
+/* 
+ * Persistence control commands 
+ */
 
 int credis_save(REDIS rhnd);
 
@@ -271,8 +310,9 @@ int credis_lastsave(REDIS rhnd);
 
 int credis_shutdown(REDIS rhnd);
 
-
-/**** Remote server control commands *****************************************/
+/*
+ * Remote server control commands 
+ */
 
 int credis_info(REDIS rhnd, REDIS_INFO *info);
 

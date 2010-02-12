@@ -169,7 +169,7 @@ static int cr_morebulk(cr_multibulk *mb, int size)
 
 /* Appends a string `str' to the end of buffer `buf'. If available memory
  * in buffer is not enough to hold `str' more memory is allocated to the
- * buffer. 
+ * buffer. If `space' is not 0 `str' is padded with a space.
  * Returns:
  *   0  on success
  *  <0  on error, i.e. more memory not available */
@@ -192,6 +192,29 @@ static int cr_appendstr(cr_buffer *buf, const char *str, int space)
     rc = snprintf(buf->data + buf->len, avail, format, str);
   }
   buf->len += rc;
+
+  return 0;
+}
+
+/* Appends an array of strings `strv' to the end of buffer `buf', each 
+ * separated with a space. If `newline' is not 0 "\r\n" is added last 
+ * to buffer.
+ * Returns:
+ *   0  on success
+ *  <0  on error, i.e. more memory not available */
+int cr_appendstrarray(cr_buffer *buf, int strc, const char **strv, int newline)
+{
+  int rc, i;
+
+  for (i = 0; i < strc; i++) {
+    if ((rc = cr_appendstr(buf, strv[i], 1)) != 0)
+      return rc;
+  }
+
+  if (newline) {
+    if ((rc = cr_appendstr(buf, "\r\n", 0)) != 0)
+      return rc;
+  }
 
   return 0;
 }
@@ -281,7 +304,8 @@ static int cr_readln(REDIS rhnd, int start, char **line, int *idx)
   if ((more = buf->idx + start + 2 - buf->len) < 0)
     more = 0;
   
-  while (more > 0 || (nl = cr_findnl(buf->data + buf->idx + start, buf->len - (buf->idx + start))) == NULL) {
+  while (more > 0 || 
+         (nl = cr_findnl(buf->data + buf->idx + start, buf->len - (buf->idx + start))) == NULL) {
     avail = buf->size - buf->len;
     if (avail < CR_BUFFER_WATERMARK || avail < more) {
       DEBUG("available buffer memory is low, get more memory");
@@ -314,7 +338,8 @@ static int cr_readln(REDIS rhnd, int start, char **line, int *idx)
   len = nl - *line;
   buf->idx = (nl - buf->data) + 2; /* skip "\r\n" */
 
-  DEBUG("size=%d, len=%d, idx=%d, start=%d, line=%s", buf->size, buf->len, buf->idx, start, *line);
+  DEBUG("size=%d, len=%d, idx=%d, start=%d, line=%s", 
+        buf->size, buf->len, buf->idx, start, *line);
 
   return len;
 }
@@ -370,8 +395,6 @@ static int cr_receivebulk(REDIS rhnd, char *line)
 {
   int blen;
 
-  assert(line != NULL);
-
   blen = atoi(line);
   if (blen == -1) {
     rhnd->reply.bulk = NULL; /* key didn't exist */
@@ -393,7 +416,6 @@ static int cr_receiveinline(REDIS rhnd, char *line)
 
 static int cr_receiveint(REDIS rhnd, char *line) 
 {
-  assert(line != NULL);
   rhnd->reply.integer = atoi(line);
   return 0;
 }
@@ -474,8 +496,6 @@ static int cr_sendandreceive(REDIS rhnd, char recvtype)
 {
   int rc;
 
-  assert(rhnd != NULL);
-
   DEBUG("Sending message: len=%d, data=%s", rhnd->buf.len, rhnd->buf.data);
 
   rc = cr_senddata(rhnd->fd, rhnd->timeout, rhnd->buf.data, rhnd->buf.len);
@@ -495,8 +515,6 @@ static int cr_sendfandreceive(REDIS rhnd, char recvtype, const char *format, ...
   int rc;
   va_list ap;
   cr_buffer *buf = &(rhnd->buf);
-
-  assert(format != NULL);
 
   va_start(ap, format);
   rc = vsnprintf(buf->data, buf->size, format, ap);
@@ -611,20 +629,17 @@ int credis_auth(REDIS rhnd, const char *password)
   return cr_sendfandreceive(rhnd, CR_INLINE, "AUTH %s\r\n", password);
 }
 
-int credis_mget(REDIS rhnd, int keyc, const char **keyv, char ***valv)
+int cr_multikeybulkcommand(REDIS rhnd, const char *cmd, int keyc, 
+                           const char **keyv, char ***valv)
 {
   cr_buffer *buf = &(rhnd->buf);
-  int rc, i;
+  int rc;
 
-  buf->len = snprintf(buf->data, buf->size, "MGET");
-  for (i = 0; i < keyc; i++) {
-    if ((rc = cr_appendstr(buf, keyv[i], 1)) != 0)
-      return rc;
-  }
-
-  if ((rc = cr_appendstr(buf, "\r\n", 0)) != 0)
+  buf->len = 0;
+  if ((rc = cr_appendstr(buf, cmd, 0)) != 0)
     return rc;
-
+  if ((rc = cr_appendstrarray(buf, keyc, keyv, 1)) != 0)
+    return rc;
   if ((rc = cr_sendandreceive(rhnd, CR_MULTIBULK)) == 0) {
     *valv = rhnd->reply.multibulk.bulks;
     rc = rhnd->reply.multibulk.len;
@@ -633,9 +648,31 @@ int credis_mget(REDIS rhnd, int keyc, const char **keyv, char ***valv)
   return rc;
 }
 
+int cr_multikeystorecommand(REDIS rhnd, const char *cmd, const char *destkey, 
+                            int keyc, const char **keyv)
+{
+  cr_buffer *buf = &(rhnd->buf);
+  int rc;
+
+  buf->len = 0;
+  if ((rc = cr_appendstr(buf, cmd, 0)) != 0)
+    return rc;
+  if ((rc = cr_appendstr(buf, destkey, 1)) != 0)
+    return rc;
+  if ((rc = cr_appendstrarray(buf, keyc, keyv, 1)) != 0)
+    return rc;
+
+  return cr_sendandreceive(rhnd, CR_INLINE);
+}
+
+int credis_mget(REDIS rhnd, int keyc, const char **keyv, char ***valv)
+{
+  return cr_multikeybulkcommand(rhnd, "MGET", keyc, keyv, valv);
+}
+
 int credis_setnx(REDIS rhnd, const char *key, const char *val)
 {
-  int rc = cr_sendfandreceive(rhnd, CR_INLINE, "SETNX %s %d\r\n%s\r\n", 
+  int rc = cr_sendfandreceive(rhnd, CR_INT, "SETNX %s %d\r\n%s\r\n", 
                               key, strlen(val), val);
 
   if (rc == 0)
@@ -695,8 +732,6 @@ int credis_exists(REDIS rhnd, const char *key)
 
 int credis_del(REDIS rhnd, const char *key)
 {
-  /* TODO it should be possible to remove multiple keys 
-     at once: DEL key1 key2 ... keyN */
   int rc = cr_sendfandreceive(rhnd, CR_INT, "DEL %s\r\n", key);
 
   if (rc == 0)
@@ -835,6 +870,12 @@ int credis_lrange(REDIS rhnd, const char *key, int start, int end, char ***valv)
   return rc;
 }
 
+int credis_ltrim(REDIS rhnd, const char *key, int start, int end)
+{
+  return cr_sendfandreceive(rhnd, CR_INLINE, "LTRIM %s %d %d\r\n", 
+                            key, start, end);
+}
+
 int credis_lindex(REDIS rhnd, const char *key, int index, char **val)
 {
   int rc = cr_sendfandreceive(rhnd, CR_BULK, "LINDEX %s %d\r\n", key, index);
@@ -848,7 +889,7 @@ int credis_lindex(REDIS rhnd, const char *key, int index, char **val)
 
 int credis_lset(REDIS rhnd, const char *key, int index, const char *val)
 {
-  return  cr_sendfandreceive(rhnd, CR_INT, "LSET %s %d %s\r\n", key, index, val);
+  return cr_sendfandreceive(rhnd, CR_INLINE, "LSET %s %d %s\r\n", key, index, val);
 }
 
 int credis_lrem(REDIS rhnd, const char *key, int count, const char *val)
@@ -880,7 +921,7 @@ int credis_rpop(REDIS rhnd, const char *key, char **val)
 
 int credis_select(REDIS rhnd, int index)
 {
-  return  cr_sendfandreceive(rhnd, CR_INLINE, "SELECT %d\r\n", index);
+  return cr_sendfandreceive(rhnd, CR_INLINE, "SELECT %d\r\n", index);
 }
 
 int credis_move(REDIS rhnd, const char *key, int index)
@@ -896,12 +937,12 @@ int credis_move(REDIS rhnd, const char *key, int index)
 
 int credis_flushdb(REDIS rhnd)
 {
-  return  cr_sendfandreceive(rhnd, CR_INLINE, "FLUSHDB\r\n");
+  return cr_sendfandreceive(rhnd, CR_INLINE, "FLUSHDB\r\n");
 }
 
 int credis_flushall(REDIS rhnd)
 {
-  return  cr_sendfandreceive(rhnd, CR_INLINE, "FLUSHALL\r\n");
+  return cr_sendfandreceive(rhnd, CR_INLINE, "FLUSHALL\r\n");
 }
 
 int credis_sort(REDIS rhnd, const char *query, char ***elementv)
@@ -918,12 +959,12 @@ int credis_sort(REDIS rhnd, const char *query, char ***elementv)
 
 int credis_save(REDIS rhnd)
 {
-  return  cr_sendfandreceive(rhnd, CR_INLINE, "SAVE\r\n");
+  return cr_sendfandreceive(rhnd, CR_INLINE, "SAVE\r\n");
 }
 
 int credis_bgsave(REDIS rhnd)
 {
-  return  cr_sendfandreceive(rhnd, CR_INLINE, "BGSAVE\r\n");
+  return cr_sendfandreceive(rhnd, CR_INLINE, "BGSAVE\r\n");
 }
 
 int credis_lastsave(REDIS rhnd)
@@ -986,15 +1027,15 @@ int credis_info(REDIS rhnd, REDIS_INFO *info)
 
 int credis_monitor(REDIS rhnd)
 {
-  return  cr_sendfandreceive(rhnd, CR_INLINE, "MONITOR\r\n");
+  return cr_sendfandreceive(rhnd, CR_INLINE, "MONITOR\r\n");
 }
 
 int credis_slaveof(REDIS rhnd, const char *host, int port)
 {
   if (host == NULL || port == 0)
-    return  cr_sendfandreceive(rhnd, CR_INLINE, "SLAVEOF no one\r\n");
+    return cr_sendfandreceive(rhnd, CR_INLINE, "SLAVEOF no one\r\n");
   else
-    return  cr_sendfandreceive(rhnd, CR_INLINE, "SLAVEOF %s %d\r\n", host, port);
+    return cr_sendfandreceive(rhnd, CR_INLINE, "SLAVEOF %s %d\r\n", host, port);
 }
 
 static int cr_setaddrem(REDIS rhnd, const char *cmd, const char *key, const char *member)
@@ -1004,7 +1045,7 @@ static int cr_setaddrem(REDIS rhnd, const char *cmd, const char *key, const char
 
   if (rc == 0)
     if (rhnd->reply.integer == 0)
-      return -1;
+      rc = 1;
 
   return rc;
 }
@@ -1019,7 +1060,76 @@ int credis_srem(REDIS rhnd, const char *key, const char *member)
   return cr_setaddrem(rhnd, "SREM", key, member);
 }
 
+int credis_spop(REDIS rhnd, const char *key, char **member)
+{
+  int rc = cr_sendfandreceive(rhnd, CR_BULK, "SPOP %s\r\n", key);
+
+  if (rc == 0)
+    if ((*member = rhnd->reply.bulk) == NULL)
+      rc = -1;
+
+  return rc;
+}
+
+int credis_smove(REDIS rhnd, const char *sourcekey, const char *destkey, 
+                 const char *member)
+{
+  int rc = cr_sendfandreceive(rhnd, CR_INT, "SMOVE %s %s %s\r\n", 
+                              sourcekey, destkey, member);
+
+  if (rc == 0)
+    if (rhnd->reply.integer == 0)
+      rc = -1;
+
+  return rc;
+}
+
+int credis_scard(REDIS rhnd, const char *key) 
+{
+  int rc = cr_sendfandreceive(rhnd, CR_INT, "SCARD %s\r\n", key);
+
+  if (rc == 0)
+    rc = rhnd->reply.integer;
+
+  return rc;
+}
+
+int credis_sinter(REDIS rhnd, int keyc, const char **keyv, char ***members)
+{
+  return cr_multikeybulkcommand(rhnd, "SINTER", keyc, keyv, members);
+}
+
+int credis_sunion(REDIS rhnd, int keyc, const char **keyv, char ***members)
+{
+  return cr_multikeybulkcommand(rhnd, "SUNION", keyc, keyv, members);
+}
+
+int credis_sdiff(REDIS rhnd, int keyc, const char **keyv, char ***members)
+{
+  return cr_multikeybulkcommand(rhnd, "SDIFF", keyc, keyv, members);
+}
+
+int credis_sinterstore(REDIS rhnd, const char *destkey, int keyc, const char **keyv)
+{
+  return cr_multikeystorecommand(rhnd, "SINTERSTORE", destkey, keyc, keyv);
+}
+
+int credis_sunionstore(REDIS rhnd, const char *destkey, int keyc, const char **keyv)
+{
+  return cr_multikeystorecommand(rhnd, "SUNIONSTORE", destkey, keyc, keyv);
+}
+
+int credis_sdiffstore(REDIS rhnd, const char *destkey, int keyc, const char **keyv)
+{
+  return cr_multikeystorecommand(rhnd, "SDIFFSTORE", destkey, keyc, keyv);
+}
+
 int credis_sismember(REDIS rhnd, const char *key, const char *member)
 {
   return cr_setaddrem(rhnd, "SISMEMBER", key, member);
+}
+
+int credis_smembers(REDIS rhnd, const char *key, char ***members)
+{
+  return cr_multikeybulkcommand(rhnd, "SMEMBERS", 1, &key, members);
 }

@@ -168,6 +168,11 @@ int main(int argc, char **argv) {
   for (i = 0; i < rc; i++)
     printf(" % 2d: %s\n", i, valv[i]);
 
+  rc = credis_keys(redis, "*", &valv);
+  printf("keys returned: %d\n", rc);
+  for (i = 0; i < rc; i++)
+    printf(" % 2d: %s\n", i, valv[i]);
+
 
   printf("\n\n************* sets ************************************ \n");
 

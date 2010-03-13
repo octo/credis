@@ -167,6 +167,31 @@ static int cr_morebulk(cr_multibulk *mb, int size)
   return 0;
 }
 
+/* Splits string `str' on character `token' builds a multi-bulk array from 
+ * the items. This function will modify the contents of what `str' points
+ * to.
+ * Returns:
+ *   0  on success
+ *  <0  on error, i.e. more memory not available */
+static int cr_splitstrtromultibulk(REDIS rhnd, char *str, const char token)
+{
+  int i = 0;
+
+  if (str != NULL) {
+    rhnd->reply.multibulk.bulks[i++] = str;
+    while ((str = strchr(str, token))) {
+      *str++ = '\0';
+      if (i >= rhnd->reply.multibulk.size)
+        if (cr_morebulk(&(rhnd->reply.multibulk), 1))
+          return CREDIS_ERR_NOMEM;
+      
+      rhnd->reply.multibulk.bulks[i++] = str;
+    }
+  }
+  rhnd->reply.multibulk.len = i;  
+  return 0;
+}
+
 /* Appends a string `str' to the end of buffer `buf'. If available memory
  * in buffer is not enough to hold `str' more memory is allocated to the
  * buffer. If `space' is not 0 `str' is padded with a space.
@@ -762,11 +787,15 @@ int credis_type(REDIS rhnd, const char *key)
 
 int credis_keys(REDIS rhnd, const char *pattern, char ***keyv)
 {
-  int rc = cr_sendfandreceive(rhnd, CR_MULTIBULK, "KEYS %s\r\n", pattern);
+  int rc = cr_sendfandreceive(rhnd, CR_BULK, "KEYS %s\r\n", pattern);
 
   if (rc == 0) {
-    *keyv = rhnd->reply.multibulk.bulks;
-    rc = rhnd->reply.multibulk.len;
+    /* server returns keys as space-separated strings, use multi-bulk 
+     * storage to store keys */
+    if ((rc = cr_splitstrtromultibulk(rhnd, rhnd->reply.bulk, ' ')) == 0) {
+      *keyv = rhnd->reply.multibulk.bulks;
+      rc = rhnd->reply.multibulk.len;
+    }
   }
 
   return rc;

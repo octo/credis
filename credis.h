@@ -54,7 +54,7 @@ extern "C" {
  * data to which returned values reference to. If for instance the 
  * returned value by a call to credis_get() is to be used later in the 
  * program, a strdup() is highly recommended. However, each `REDIS' 
- * handle has its own state and manages its own memory buffer 
+ * handle has its own state and manages its own memory buffers 
  * independently. That means that one of two handles can be destroyed
  * while the other keeps its connection and data.
  * 

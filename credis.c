@@ -192,31 +192,35 @@ static int cr_splitstrtromultibulk(REDIS rhnd, char *str, const char token)
   return 0;
 }
 
-/* Appends a string `str' to the end of buffer `buf'. If available memory
- * in buffer is not enough to hold `str' more memory is allocated to the
- * buffer. If `space' is not 0 `str' is padded with a space.
+/* Appends a zero-terminated string `str' to the end of buffer `buf'. If 
+ * available memory in buffer is not enough to hold `str' more memory is 
+ * allocated to the buffer. If `space' is not 0 `str' is padded with a space.
  * Returns:
  *   0  on success
  *  <0  on error, i.e. more memory not available */
 static int cr_appendstr(cr_buffer *buf, const char *str, int space)
 {
-  int rc, avail;
-  char *format = (space==0?"%s":" %s");
+  int avail, len, reqd;
 
-  /* TODO instead of using formatted print use memcpy() and don't
-     blindly add a space before `str' */
-
+  len = strlen(str);
   avail = buf->size - buf->len;
-  rc = snprintf(buf->data + buf->len, avail, format, str);
-  if (rc >= avail) {
-    DEBUG("truncated, get more memory and try again");
-    if (cr_moremem(buf, rc - avail + 1))
+
+  /* required memory: len, terminating zero and possibly a space */
+  reqd = len + 1;
+  if (space)
+    reqd++;
+
+  if (reqd > avail)
+    if (cr_moremem(buf, reqd - avail + 1))
       return CREDIS_ERR_NOMEM;
-    
-    avail = buf->size - buf->len;
-    rc = snprintf(buf->data + buf->len, avail, format, str);
-  }
-  buf->len += rc;
+
+  if (space)
+    buf->data[buf->len++] = ' ';
+
+  memcpy(buf->data + buf->len, str, len);
+  buf->len += len;
+
+  buf->data[buf->len] = '\0';
 
   return 0;
 }

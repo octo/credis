@@ -231,7 +231,7 @@ static int cr_appendstr(cr_buffer *buf, const char *str, int space)
  * Returns:
  *   0  on success
  *  <0  on error, i.e. more memory not available */
-int cr_appendstrarray(cr_buffer *buf, int strc, const char **strv, int newline)
+static int cr_appendstrarray(cr_buffer *buf, int strc, const char **strv, int newline)
 {
   int rc, i;
 
@@ -658,7 +658,7 @@ int credis_auth(REDIS rhnd, const char *password)
   return cr_sendfandreceive(rhnd, CR_INLINE, "AUTH %s\r\n", password);
 }
 
-int cr_multikeybulkcommand(REDIS rhnd, const char *cmd, int keyc, 
+static int cr_multikeybulkcommand(REDIS rhnd, const char *cmd, int keyc, 
                            const char **keyv, char ***valv)
 {
   cr_buffer *buf = &(rhnd->buf);
@@ -677,7 +677,7 @@ int cr_multikeybulkcommand(REDIS rhnd, const char *cmd, int keyc,
   return rc;
 }
 
-int cr_multikeystorecommand(REDIS rhnd, const char *cmd, const char *destkey, 
+static int cr_multikeystorecommand(REDIS rhnd, const char *cmd, const char *destkey, 
                             int keyc, const char **keyv)
 {
   cr_buffer *buf = &(rhnd->buf);
@@ -864,7 +864,7 @@ int credis_ttl(REDIS rhnd, const char *key)
   return rc;
 }
 
-int cr_push(REDIS rhnd, int left, const char *key, const char *val)
+static int cr_push(REDIS rhnd, int left, const char *key, const char *val)
 {
   return cr_sendfandreceive(rhnd, CR_INLINE, "%s %s %d\r\n%s\r\n", 
                             left==1?"LPUSH":"RPUSH", key, strlen(val), val);

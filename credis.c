@@ -922,12 +922,14 @@ int credis_lindex(REDIS rhnd, const char *key, int index, char **val)
 
 int credis_lset(REDIS rhnd, const char *key, int index, const char *val)
 {
-  return cr_sendfandreceive(rhnd, CR_INLINE, "LSET %s %d %s\r\n", key, index, val);
+  return cr_sendfandreceive(rhnd, CR_INLINE, "LSET %s %d %d\r\n%s\r\n", 
+                            key, index, strlen(val), val);
 }
 
 int credis_lrem(REDIS rhnd, const char *key, int count, const char *val)
 {
-  return cr_sendfandreceive(rhnd, CR_INT, "LREM %s %d %d\r\n", key, count, val);
+  return cr_sendfandreceive(rhnd, CR_INT, "LREM %s %d %d\r\n%s\r\n", 
+                            key, count, strlen(val), val);
 }
 
 static int cr_pop(REDIS rhnd, int left, const char *key, char **val)

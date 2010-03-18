@@ -272,6 +272,28 @@ int main(int argc, char **argv) {
   }  
   printf("all data verified!\n");
 
+  printf("Testing lpush and lrem\n");
+  rc = credis_lpush(redis, "cars", "volvo");
+  rc = credis_lpush(redis, "cars", "saab");
+  rc = credis_lrange(redis, "cars", 0, 200, &valv);
+  printf("lrange (0, 200) returned: %d items\n", rc);
+  for (i = 0; i < rc; i++) 
+      printf("  %02d: %s\n", i, valv[i]);
+  rc = credis_lrem(redis, "cars", 1, "volvo");
+  printf("credis_lrem() returned %d\n", rc);
+  rc = credis_lrange(redis, "cars", 0, 200, &valv);
+  printf("lrange (0, 200) returned: %d items\n", rc);
+  for (i = 0; i < rc; i++) 
+      printf("  %02d: %s\n", i, valv[i]);
+  rc = credis_lrem(redis, "cars", 1, "volvo");
+
+  printf("Testing lset\n");
+  rc = credis_lset(redis, "cars", 2, "koenigsegg");
+  printf("lrange (0, 200) returned: %d items\n", rc);
+  for (i = 0; i < rc; i++) 
+      printf("  %02d: %s\n", i, valv[i]);
+  rc = credis_lrem(redis, "cars", 1, "volvo");
+
   credis_close(redis);
 
   return 0;

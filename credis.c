@@ -1080,7 +1080,7 @@ static int cr_setaddrem(REDIS rhnd, const char *cmd, const char *key, const char
 
   if (rc == 0)
     if (rhnd->reply.integer == 0)
-      rc = 1;
+      rc = -1;
 
   return rc;
 }

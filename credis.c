@@ -775,7 +775,7 @@ int credis_type(REDIS rhnd, const char *key)
   int rc = cr_sendfandreceive(rhnd, CR_INLINE, "TYPE %s\r\n", key);
 
   if (rc == 0) {
-    char *t = rhnd->reply.bulk;
+    char *t = rhnd->reply.line;
     if (!strcmp("string", t))
       rc = CREDIS_TYPE_STRING;
     else if (!strcmp("list", t))

@@ -140,6 +140,11 @@ int main(int argc, char **argv) {
   rc = credis_get(redis, "kalle", &val);
   printf("get kalle returned: %s\n", val);
 
+  rc = credis_type(redis, "someunknownkey");
+  printf("get type unknown key returned: %d\n", rc);
+
+  rc = credis_type(redis, "kalle");
+  printf("get type known key returned: %d\n", rc);
 
   rc = credis_getset(redis, "kalle", "buhu", &val);
   printf("getset kalle=buhu returned: %s\n", val);

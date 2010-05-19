@@ -59,6 +59,8 @@
 #define STRINGIFY(arg) _STRINGIF(arg)
 
 #define CR_VERSION_STRING_SIZE_STR STRINGIFY(CREDIS_VERSION_STRING_SIZE)
+#define CR_MULTIPLEXING_API_SIZE_STR STRINGIFY(CREDIS_MULTIPLEXING_API_SIZE)
+#define CR_USED_MEMORY_HUMAN_SIZE_STR STRINGIFY(CREDIS_USED_MEMORY_HUMAN_SIZE)
 
 #ifdef PRINTDEBUG
 /* add -DPRINTDEBUG to CPPFLAGS in Makefile for debug outputs */
@@ -94,6 +96,11 @@ typedef struct _cr_reply {
 } cr_reply;
 
 typedef struct _cr_redis {
+  struct {
+    int major;
+    int minor;
+    int patch;
+  } version;
   int fd;
   char *ip;
   int port;
@@ -609,7 +616,25 @@ REDIS credis_connect(const char *host, int port, int timeout)
   rhnd->port = port;
   rhnd->fd = fd;
   rhnd->timeout = timeout;
- 
+
+  /* We can receive 2 version formats: x.yz and x.y.z, where x.yz was only used prior 
+   * first 1.1.0 release(?), e.g. stable releases 1.02 and 1.2.6 */
+  if (cr_sendfandreceive(rhnd, CR_BULK, "INFO\r\n") == 0) {
+    int items = sscanf(rhnd->reply.bulk,
+                       "redis_version:%d.%d.%d\r\n",
+                       &(rhnd->version.major),
+                       &(rhnd->version.minor),
+                       &(rhnd->version.patch));
+    if (items < 2)
+      goto error;
+    if (items == 2) {
+      rhnd->version.patch = rhnd->version.minor;
+      rhnd->version.minor = 0;
+    }
+    DEBUG("Connected to Redis version: %d.%d.%d\n", 
+          rhnd->version.major, rhnd->version.minor, rhnd->version.patch);
+  }
+
   return rhnd;
 
  error:
@@ -1017,44 +1042,51 @@ int credis_shutdown(REDIS rhnd)
   return cr_sendfandreceive(rhnd, CR_INLINE, "SHUTDOWN\r\n");
 }
 
-#define CR_NUMBER_OF_ITEMS 12
+/* Parse Redis `info' string for a particular `field', storing its value to 
+ * `storage' according to `format'.
+ */
+void cr_parseinfo(const char *info, const char *field, const char *format, void *storage)
+{
+  char *str = strstr(info, field);
+  if (str) {
+    str += strlen(field) + 1; /* also skip the ':' */
+    sscanf(str, format, storage); 
+  }
+}
 
 int credis_info(REDIS rhnd, REDIS_INFO *info)
 {
   int rc = cr_sendfandreceive(rhnd, CR_BULK, "INFO\r\n");
 
   if (rc == 0) {
-    char role[CREDIS_VERSION_STRING_SIZE];
-    int items = sscanf(rhnd->reply.bulk,
-                       "redis_version:%"CR_VERSION_STRING_SIZE_STR"s\r\n" \
-                       "uptime_in_seconds:%d\r\n"                         \
-                       "uptime_in_days:%d\r\n"                            \
-                       "connected_clients:%d\r\n"                         \
-                       "connected_slaves:%d\r\n"                          \
-                       "used_memory:%u\r\n"                               \
-                       "changes_since_last_save:%lld\r\n"                 \
-                       "bgsave_in_progress:%d\r\n"                        \
-                       "last_save_time:%d\r\n"                            \
-                       "total_connections_received:%lld\r\n"              \
-                       "total_commands_processed:%lld\r\n"                \
-                       "role:%"CR_VERSION_STRING_SIZE_STR"s\r\n",
-                       info->redis_version,
-                       &(info->uptime_in_seconds),
-                       &(info->uptime_in_days),
-                       &(info->connected_clients),
-                       &(info->connected_slaves),
-                       &(info->used_memory),
-                       &(info->changes_since_last_save),
-                       &(info->bgsave_in_progress),
-                       &(info->last_save_time),
-                       &(info->total_connections_received),
-                       &(info->total_commands_processed),
-                       role);
-    
-    if (items != CR_NUMBER_OF_ITEMS)
-      return CREDIS_ERR_PROTOCOL; /* not enough input items returned */
-    
-    info->role = ((role[0]=='m')?CREDIS_SERVER_MASTER:CREDIS_SERVER_SLAVE);
+    char role;
+    memset(info, 0, sizeof(REDIS_INFO));
+    cr_parseinfo(rhnd->reply.bulk, "redis_version", "%"CR_VERSION_STRING_SIZE_STR"s\r\n", &(info->redis_version));
+    cr_parseinfo(rhnd->reply.bulk, "arch_bits", "%d", &(info->arch_bits));
+    cr_parseinfo(rhnd->reply.bulk, "multiplexing_api", "%"CR_MULTIPLEXING_API_SIZE_STR"s\r\n", &(info->multiplexing_api));
+    cr_parseinfo(rhnd->reply.bulk, "process_id", "%ld", &(info->process_id));
+    cr_parseinfo(rhnd->reply.bulk, "uptime_in_seconds", "%ld", &(info->uptime_in_seconds));
+    cr_parseinfo(rhnd->reply.bulk, "uptime_in_days", "%ld", &(info->uptime_in_days));
+    cr_parseinfo(rhnd->reply.bulk, "connected_clients", "%d", &(info->connected_clients));
+    cr_parseinfo(rhnd->reply.bulk, "connected_slaves", "%d", &(info->connected_slaves));
+    cr_parseinfo(rhnd->reply.bulk, "blocked_clients", "%d", &(info->blocked_clients));
+    cr_parseinfo(rhnd->reply.bulk, "used_memory", "%zu", &(info->used_memory));
+    cr_parseinfo(rhnd->reply.bulk, "used_memory_human", "%"CR_USED_MEMORY_HUMAN_SIZE_STR"s", &(info->used_memory_human));
+    cr_parseinfo(rhnd->reply.bulk, "changes_since_last_save", "%lld", &(info->changes_since_last_save));
+    cr_parseinfo(rhnd->reply.bulk, "bgsave_in_progress", "%d", &(info->bgsave_in_progress));
+    cr_parseinfo(rhnd->reply.bulk, "last_save_time", "%ld", &(info->last_save_time));
+    cr_parseinfo(rhnd->reply.bulk, "bgrewriteaof_in_progress", "%d", &(info->bgrewriteaof_in_progress));
+    cr_parseinfo(rhnd->reply.bulk, "total_connections_received", "%lld", &(info->total_connections_received));
+    cr_parseinfo(rhnd->reply.bulk, "total_commands_processed", "%lld", &(info->total_commands_processed));
+    cr_parseinfo(rhnd->reply.bulk, "expired_keys", "%lld", &(info->expired_keys));
+    cr_parseinfo(rhnd->reply.bulk, "hash_max_zipmap_entries", "%zu", &(info->hash_max_zipmap_entries));
+    cr_parseinfo(rhnd->reply.bulk, "hash_max_zipmap_value", "%zu", &(info->hash_max_zipmap_value));
+    cr_parseinfo(rhnd->reply.bulk, "pubsub_channels", "%ld", &(info->pubsub_channels));
+    cr_parseinfo(rhnd->reply.bulk, "pubsub_patterns", "%u", &(info->pubsub_patterns));
+    cr_parseinfo(rhnd->reply.bulk, "vm_enabled", "%d", &(info->vm_enabled));
+    cr_parseinfo(rhnd->reply.bulk, "role", "%c", &role);
+
+    info->role = ((role=='m')?CREDIS_SERVER_MASTER:CREDIS_SERVER_SLAVE);
   }
   
   return rc;

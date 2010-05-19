@@ -95,19 +95,33 @@ typedef struct _cr_redis* REDIS;
 #define CREDIS_SERVER_SLAVE 2
 
 #define CREDIS_VERSION_STRING_SIZE 32
+#define CREDIS_MULTIPLEXING_API_SIZE 16
+#define CREDIS_USED_MEMORY_HUMAN_SIZE 32
 
 typedef struct _cr_info {
   char redis_version[CREDIS_VERSION_STRING_SIZE];
-  int bgsave_in_progress;
+  int arch_bits;
+  char multiplexing_api[CREDIS_MULTIPLEXING_API_SIZE];
+  long process_id;
+  long uptime_in_seconds;
+  long uptime_in_days;
   int connected_clients;
   int connected_slaves;
-  unsigned int used_memory;
+  int blocked_clients;
+  unsigned long used_memory;
+  char used_memory_human[CREDIS_USED_MEMORY_HUMAN_SIZE];
   long long changes_since_last_save;
-  int last_save_time;
+  int bgsave_in_progress;
+  long last_save_time;
+  int bgrewriteaof_in_progress;
   long long total_connections_received;
   long long total_commands_processed;
-  int uptime_in_seconds;
-  int uptime_in_days;
+  long long expired_keys;
+  unsigned long hash_max_zipmap_entries;
+  unsigned long hash_max_zipmap_value;
+  long pubsub_channels;
+  unsigned int pubsub_patterns;
+  int vm_enabled;
   int role;
 } REDIS_INFO;
 
@@ -392,6 +406,12 @@ int credis_shutdown(REDIS rhnd);
  * Remote server control commands 
  */
 
+/* Because the information returned by the Redis changes with virtually every 
+ * major release, credis tries to parse for as many fields as it is aware of, 
+ * staying backwards (and forwards) compatible with older (and newer) versions 
+ * of Redis. 
+ * Information fields not supported by the Redis server connected to, are set
+ * to zero. */
 int credis_info(REDIS rhnd, REDIS_INFO *info);
 
 int credis_monitor(REDIS rhnd);

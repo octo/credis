@@ -107,30 +107,31 @@ int main(int argc, char **argv) {
 
   rc = credis_info(redis, &info);
   printf("info returned %d\n", rc);
-  printf(">redis_version: %s\n"                   \
-         ">uptime_in_seconds: %d\n"               \
-         ">uptime_in_days: %d\n"                  \
-         ">connected_clients: %d\n"               \
-         ">connected_slaves: %d\n"                \
-         ">used_memory: %u\n"                     \
-         ">changes_since_last_save: %lld\n"       \
-         ">bgsave_in_progress: %d\n"              \
-         ">last_save_time: %d\n"                  \
-         ">total_connections_received: %lld\n"    \
-         ">total_commands_processed: %lld\n"      \
-         ">role: %d\n",
-         info.redis_version,
-         info.uptime_in_seconds,
-         info.uptime_in_days,
-         info.connected_clients,
-         info.connected_slaves,
-         info.used_memory,
-         info.changes_since_last_save,
-         info.bgsave_in_progress,
-         info.last_save_time,
-         info.total_connections_received,
-         info.total_commands_processed,
-         info.role);
+  printf("> redis_version: %s\n", info.redis_version);
+  printf("> arch_bits: %d\n", info.arch_bits);
+  printf("> multiplexing_api: %s\n", info.multiplexing_api);
+  printf("> process_id: %ld\n", info.process_id);
+  printf("> uptime_in_seconds: %ld\n", info.uptime_in_seconds);
+  printf("> uptime_in_days: %ld\n", info.uptime_in_days);
+  printf("> connected_clients: %d\n", info.connected_clients);
+  printf("> connected_slaves: %d\n", info.connected_slaves);
+  printf("> blocked_clients: %d\n", info.blocked_clients);
+  printf("> used_memory: %zu\n", info.used_memory);
+  printf("> used_memory_human: %s\n", info.used_memory_human);
+  printf("> changes_since_last_save: %lld\n", info.changes_since_last_save);
+  printf("> bgsave_in_progress: %d\n", info.bgsave_in_progress);
+  printf("> last_save_time: %ld\n", info.last_save_time);
+  printf("> bgrewriteaof_in_progress: %d\n", info.bgrewriteaof_in_progress);
+  printf("> total_connections_received: %lld\n", info.total_connections_received);
+  printf("> total_commands_processed: %lld\n", info.total_commands_processed);
+  printf("> expired_keys: %lld\n", info.expired_keys);
+  printf("> hash_max_zipmap_entries: %zu\n", info.hash_max_zipmap_entries);
+  printf("> hash_max_zipmap_value: %zu\n", info.hash_max_zipmap_value);
+  printf("> pubsub_channels: %ld\n", info.pubsub_channels);
+  printf("> pubsub_patterns: %u\n", info.pubsub_patterns);
+  printf("> vm_enabled: %d\n", info.vm_enabled);
+  printf("> role: %d\n", info.role);
+
 
   printf("\n\n************* get/set ************************************ \n");
 

@@ -28,22 +28,35 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
+#include <assert.h>
 #include <stdarg.h>
-#include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#ifdef WIN32
+#define _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_DEPRECATE
+#define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
+#else 
+#include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <netdb.h>
+#include <netinet/tcp.h>
 #include <sys/select.h>
 #include <sys/time.h>
 #include <sys/socket.h>
-#include <netdb.h>
-#include <netinet/tcp.h>
-#include <arpa/inet.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <assert.h>
+#include <unistd.h>
+#endif
 
 #include "credis.h"
+
+#ifdef WIN32
+void close(int fd) {
+  closesocket(fd);
+}
+#endif
 
 #define CR_ERROR '-'
 #define CR_INLINE '+'
@@ -576,16 +589,32 @@ static int cr_sendfandreceive(REDIS rhnd, char recvtype, const char *format, ...
 
 void credis_close(REDIS rhnd)
 {
-  if (rhnd->fd > 0)
-    close(rhnd->fd);
-  cr_delete(rhnd);
+  if (rhnd) {
+    if (rhnd->fd > 0)
+      close(rhnd->fd);
+#ifdef WIN32
+    WSACleanup();
+#endif
+    cr_delete(rhnd);
+  }
 }
 
 REDIS credis_connect(const char *host, int port, int timeout)
 {
-  int fd, yes = 1;
+  int fd, yes = 1, use_he = 0;
   struct sockaddr_in sa;  
+  struct hostent *he;
   REDIS rhnd;
+
+#ifdef WIN32
+  unsigned long addr;
+  WSADATA data;
+  
+  if (WSAStartup(MAKEWORD(2,2), &data) != 0) {
+    DEBUG("Failed to init Windows Sockets DLL\n");
+    return NULL;
+  }
+#endif
 
   if ((rhnd = cr_new()) == NULL)
     return NULL;
@@ -595,19 +624,44 @@ REDIS credis_connect(const char *host, int port, int timeout)
   if (port == 0)
     port = 6379;
 
+#ifdef WIN32
   if ((fd = socket(AF_INET, SOCK_STREAM, 0)) == -1 ||
-      setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &yes, sizeof(yes)) == -1 ||
-      setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes)) == -1)
+      setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (const char *)&yes, sizeof(yes)) == -1 ||
+      setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (const char *)&yes, sizeof(yes)) == -1)
     goto error;
+#else
+  if ((fd = socket(AF_INET, SOCK_STREAM, 0)) == -1 ||
+      setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (void *)&yes, sizeof(yes)) == -1 ||
+      setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (void *)&yes, sizeof(yes)) == -1)
+    goto error;
+#endif
 
   sa.sin_family = AF_INET;
   sa.sin_port = htons(port);
+
+#ifdef WIN32
+  /* TODO use getaddrinfo() instead! */
+  addr = inet_addr(host);
+  if (addr == INADDR_NONE) {
+    he = gethostbyname(host);
+    use_he = 1;
+  }
+  else {
+    he = gethostbyaddr((char *)&addr, sizeof(addr), AF_INET);
+    use_he = 1;
+  }
+#else
   if (inet_aton(host, &sa.sin_addr) == 0) {
-    struct hostent *he = gethostbyname(host);
+    he = gethostbyname(host);
+    use_he = 1;
+  }
+#endif
+
+  if (use_he) {
     if (he == NULL)
       goto error;
     memcpy(&sa.sin_addr, he->h_addr, sizeof(struct in_addr));
-  }
+  } 
 
   if (connect(fd, (struct sockaddr*)&sa, sizeof(sa)) == -1)
     goto error;
@@ -637,10 +691,11 @@ REDIS credis_connect(const char *host, int port, int timeout)
 
   return rhnd;
 
- error:
+error:
   if (fd > 0)
     close(fd);
   cr_delete(rhnd);
+
   return NULL;
 }
 

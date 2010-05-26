@@ -709,9 +709,8 @@ int credis_get(REDIS rhnd, const char *key, char **val)
 {
   int rc = cr_sendfandreceive(rhnd, CR_BULK, "GET %s\r\n", key);
 
-  if (rc == 0)
-    if ((*val = rhnd->reply.bulk) == NULL)
-      return -1;
+  if (rc == 0 && (*val = rhnd->reply.bulk) == NULL)
+    return -1;
 
   return rc;
 }
@@ -721,9 +720,8 @@ int credis_getset(REDIS rhnd, const char *key, const char *set_val, char **get_v
   int rc = cr_sendfandreceive(rhnd, CR_BULK, "GETSET %s %d\r\n%s\r\n", 
                               key, strlen(set_val), set_val);
 
-  if (rc == 0)
-    if ((*get_val = rhnd->reply.bulk) == NULL)
-      return -1;
+  if (rc == 0 && (*get_val = rhnd->reply.bulk) == NULL)
+    return -1;
 
   return rc;
 }
@@ -784,9 +782,8 @@ int credis_setnx(REDIS rhnd, const char *key, const char *val)
   int rc = cr_sendfandreceive(rhnd, CR_INT, "SETNX %s %d\r\n%s\r\n", 
                               key, strlen(val), val);
 
-  if (rc == 0)
-    if (rhnd->reply.integer == 0)
-      rc = -1;
+  if (rc == 0 && rhnd->reply.integer == 0)
+    rc = -1;
 
   return rc;
 }
@@ -832,9 +829,8 @@ int credis_exists(REDIS rhnd, const char *key)
 {
   int rc = cr_sendfandreceive(rhnd, CR_INT, "EXISTS %s\r\n", key);
 
-  if (rc == 0)
-    if (rhnd->reply.integer == 0)
-      rc = -1;
+  if (rc == 0 && rhnd->reply.integer == 0)
+    rc = -1;
 
   return rc;
 }
@@ -843,9 +839,8 @@ int credis_del(REDIS rhnd, const char *key)
 {
   int rc = cr_sendfandreceive(rhnd, CR_INT, "DEL %s\r\n", key);
 
-  if (rc == 0)
-    if (rhnd->reply.integer == 0)
-      rc = -1;
+  if (rc == 0 && rhnd->reply.integer == 0)
+    rc = -1;
 
   return rc;
 }
@@ -906,9 +901,8 @@ int credis_renamenx(REDIS rhnd, const char *key, const char *new_key_name)
   int rc = cr_sendfandreceive(rhnd, CR_INT, "RENAMENX %s %s\r\n", 
                               key, new_key_name);
 
-  if (rc == 0)
-    if (rhnd->reply.integer == 0)
-      rc = -1;
+  if (rc == 0 && rhnd->reply.integer == 0)
+    rc = -1;
 
   return rc;
 }
@@ -927,9 +921,8 @@ int credis_expire(REDIS rhnd, const char *key, int secs)
 { 
   int rc = cr_sendfandreceive(rhnd, CR_INT, "EXPIRE %s %d\r\n", key, secs);
 
-  if (rc == 0)
-    if (rhnd->reply.integer == 0)
-      rc = -1;
+  if (rc == 0 && rhnd->reply.integer == 0)
+    rc = -1;
 
   return rc;
 }
@@ -993,8 +986,7 @@ int credis_lindex(REDIS rhnd, const char *key, int index, char **val)
 {
   int rc = cr_sendfandreceive(rhnd, CR_BULK, "LINDEX %s %d\r\n", key, index);
 
-  if (rc == 0)
-    if ((*val = rhnd->reply.bulk) == NULL)
+  if (rc == 0 && (*val = rhnd->reply.bulk) == NULL)
       return -1;
 
   return rc;
@@ -1017,9 +1009,8 @@ static int cr_pop(REDIS rhnd, int left, const char *key, char **val)
   int rc = cr_sendfandreceive(rhnd, CR_BULK, "%s %s\r\n", 
                               left==1?"LPOP":"RPOP", key);
 
-  if (rc == 0)
-    if ((*val = rhnd->reply.bulk) == NULL)
-      return -1;
+  if (rc == 0 && (*val = rhnd->reply.bulk) == NULL)
+    return -1;
 
   return rc;
 }
@@ -1043,9 +1034,8 @@ int credis_move(REDIS rhnd, const char *key, int index)
 {
   int rc = cr_sendfandreceive(rhnd, CR_INT, "MOVE %s %d\r\n", key, index);
 
-  if (rc == 0)
-    if (rhnd->reply.integer == 0)
-      rc = -1;
+  if (rc == 0 && rhnd->reply.integer == 0)
+    rc = -1;
 
   return rc;
 }
@@ -1165,9 +1155,8 @@ static int cr_setaddrem(REDIS rhnd, const char *cmd, const char *key, const char
   int rc = cr_sendfandreceive(rhnd, CR_INT, "%s %s %d\r\n%s\r\n", 
                               cmd, key, strlen(member), member);
 
-  if (rc == 0)
-    if (rhnd->reply.integer == 0)
-      rc = -1;
+  if (rc == 0 && rhnd->reply.integer == 0)
+    rc = -1;
 
   return rc;
 }
@@ -1186,9 +1175,8 @@ int credis_spop(REDIS rhnd, const char *key, char **member)
 {
   int rc = cr_sendfandreceive(rhnd, CR_BULK, "SPOP %s\r\n", key);
 
-  if (rc == 0)
-    if ((*member = rhnd->reply.bulk) == NULL)
-      rc = -1;
+  if (rc == 0 && (*member = rhnd->reply.bulk) == NULL)
+    rc = -1;
 
   return rc;
 }
@@ -1199,9 +1187,8 @@ int credis_smove(REDIS rhnd, const char *sourcekey, const char *destkey,
   int rc = cr_sendfandreceive(rhnd, CR_INT, "SMOVE %s %s %s\r\n", 
                               sourcekey, destkey, member);
 
-  if (rc == 0)
-    if (rhnd->reply.integer == 0)
-      rc = -1;
+  if (rc == 0 && rhnd->reply.integer == 0)
+    rc = -1;
 
   return rc;
 }
@@ -1254,4 +1241,61 @@ int credis_sismember(REDIS rhnd, const char *key, const char *member)
 int credis_smembers(REDIS rhnd, const char *key, char ***members)
 {
   return cr_multikeybulkcommand(rhnd, "SMEMBERS", 1, &key, members);
+}
+
+int credis_zadd(REDIS rhnd, const char *key, double score, const char *member)
+{
+  int rc = cr_sendfandreceive(rhnd, CR_INT, "ZADD %s %f %s\r\n", 
+                              key, score, member);
+
+  if (rc == 0 && rhnd->reply.integer == 0)
+    rc = -1;
+
+  return rc;
+}
+
+int credis_zrem(REDIS rhnd, const char *key, const char *member)
+{
+  int rc = cr_sendfandreceive(rhnd, CR_INT, "ZREM %s %s\r\n", 
+                              key, member);
+
+  if (rc == 0 && rhnd->reply.integer == 0)
+    rc = -1;
+
+  return rc;
+}
+
+/* TODO Redis command reference says integer reply even though score is double */
+/* TODO what does Redis return if member is not member of set? */
+int credis_zincrby(REDIS rhnd, const char *key, double incr_score, const char *member, double *new_score)
+{
+  int rc = cr_sendfandreceive(rhnd, CR_INT, "ZINCRBY %s %f %s\r\n", 
+                              key, incr_score, member);
+
+  if (rc == 0 && new_score != NULL)
+    *new_score = rhnd->reply.integer;
+
+  return rc;
+}
+
+/* TODO what does Redis return if member is not member of set? */
+int cr_zrank(REDIS rhnd, int reverse, const char *key, const char *member)
+{
+  int rc = cr_sendfandreceive(rhnd, CR_BULK, "%s %s %s\r\n", 
+                              reverse==1?"ZREVRANK":"ZRANK", key, member);
+
+  if (rc == 0)
+    rc = atoi(rhnd->reply.bulk);
+
+  return rc;
+}
+
+int credis_zrank(REDIS rhnd, const char *key, const char *member)
+{
+  return cr_zrank(rhnd, 0, key, member);
+}
+
+int credis_zrevrank(REDIS rhnd, const char *key, const char *member)
+{
+  return cr_zrank(rhnd, 1, key, member);
 }

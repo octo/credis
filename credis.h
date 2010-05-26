@@ -215,12 +215,16 @@ int credis_setnx(REDIS rhnd, const char *key, const char *val);
  * MSETNX key1 value1 key2 value2 ... keyN valueN set a multiple keys to multiple values in a single atomic operation if none of
  */
 
+/* if `new_val' is not NULL it will return the value after the increment was performed */
 int credis_incr(REDIS rhnd, const char *key, int *new_val);
 
+/* if `new_val' is not NULL it will return the value after the increment was performed */
 int credis_incrby(REDIS rhnd, const char *key, int incr_val, int *new_val);
 
+/* if `new_val' is not NULL it will return the value after the decrement was performed */
 int credis_decr(REDIS rhnd, const char *key, int *new_val);
 
+/* if `new_val' is not NULL it will return the value after the decrement was performed */
 int credis_decrby(REDIS rhnd, const char *key, int decr_val, int *new_val);
 
 /* TODO
@@ -319,16 +323,28 @@ int credis_smembers(REDIS rhnd, const char *key, char ***members);
 
 
 /* 
- * Commands operating on sorted sets (zsets, Redis version >= 1.1)
+ * Commands operating on sorted sets
  */
+
+/* returns -1 if member was already a member of the sorted set and only score was updated, 
+ * 0 is returned if the new element was added */
+int credis_zadd(REDIS rhnd, const char *key, double score, const char *member);
+
+/* returns -1 if the member was not a member of the sorted set */
+int credis_zrem(REDIS rhnd, const char *key, const char *member);
+
+/* returns -1 if the member was not a member of the sorted set, the score of the member after
+ * the increment by `incr_score' is returned by `new_score' */
+int credis_zincrby(REDIS rhnd, const char *key, double incr_score, const char *member, double *new_score);
+
+/* returns the rank of the given member or -1 if the member was not a member of the sorted set */
+int credis_zrank(REDIS rhnd, const char *key, const char *member);
+
+/* returns the reverse rank of the given member or -1 if the member was not a member of the sorted set */
+int credis_zrevrank(REDIS rhnd, const char *key, const char *member);
 
 /* TODO
  *
- * ZADD key score member Add the specified member to the Sorted Set value at key or update the score if it already exist
- * ZREM key member Remove the specified member from the Sorted Set value at key
- * ZINCRBY key increment member If the member already exists increment its score by _increment_, otherwise add the member setting _increment_ as score
- * ZRANK key member Return the rank (or index) or _member_ in the sorted set at _key_, with scores being ordered from low to high
- * ZREVRANK key member Return the rank (or index) or _member_ in the sorted set at _key_, with scores being ordered from high to low
  * ZRANGE key start end Return a range of elements from the sorted set at key
  * ZREVRANGE key start end Return a range of elements from the sorted set at key, exactly like ZRANGE, but the sorted set is ordered in traversed in reverse order, from the greatest to the smallest score
  * ZRANGEBYSCORE key min max Return all the elements with score >= min and score <= max (a range query) from the sorted set

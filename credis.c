@@ -825,6 +825,28 @@ int credis_decrby(REDIS rhnd, const char *key, int decr_val, int *new_val)
   return cr_incr(rhnd, 0, decr_val, key, new_val);
 }
 
+int credis_append(REDIS rhnd, const char *key, const char *val)
+{
+  int rc = cr_sendfandreceive(rhnd, CR_INT, "APPEND %s %d\r\n%s\r\n", 
+                              key, strlen(val), val);
+                            
+  if (rc == 0)
+    rc = rhnd->reply.integer;
+
+  return rc;                            
+}
+
+int credis_substr(REDIS rhnd, const char *key, int start, int end, char **substr)
+{
+  int rc = cr_sendfandreceive(rhnd, CR_BULK, "SUBSTR %s %d %d\r\n", 
+                              key, start, end);
+
+  if (rc == 0 && substr) 
+    *substr = rhnd->reply.bulk;
+
+  return rc;                            
+}
+
 int credis_exists(REDIS rhnd, const char *key)
 {
   int rc = cr_sendfandreceive(rhnd, CR_INT, "EXISTS %s\r\n", key);
@@ -884,7 +906,7 @@ int credis_randomkey(REDIS rhnd, char **key)
 {
   int rc = cr_sendfandreceive(rhnd, CR_INLINE, "RANDOMKEY\r\n");
 
-  if (rc == 0) 
+  if (rc == 0 && key) 
     *key = rhnd->reply.line;
 
   return rc;
@@ -987,7 +1009,7 @@ int credis_lindex(REDIS rhnd, const char *key, int index, char **val)
   int rc = cr_sendfandreceive(rhnd, CR_BULK, "LINDEX %s %d\r\n", key, index);
 
   if (rc == 0 && (*val = rhnd->reply.bulk) == NULL)
-      return -1;
+    return -1;
 
   return rc;
 }

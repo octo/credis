@@ -227,10 +227,10 @@ int credis_decr(REDIS rhnd, const char *key, int *new_val);
 /* if `new_val' is not NULL it will return the value after the decrement was performed */
 int credis_decrby(REDIS rhnd, const char *key, int decr_val, int *new_val);
 
-/* TODO
- * APPEND key value append the specified string to the string stored at key
- * SUBSTR key start end return a substring out of a larger string
- */
+/* returns new length of string after `val' has been appended */
+int credis_append(REDIS rhnd, const char *key, const char *val);
+
+int credis_substr(REDIS rhnd, const char *key, int start, int end, char **substr);
 
 
 /*

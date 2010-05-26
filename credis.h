@@ -343,15 +343,29 @@ int credis_zrank(REDIS rhnd, const char *key, const char *member);
 /* returns the reverse rank of the given member or -1 if the member was not a member of the sorted set */
 int credis_zrevrank(REDIS rhnd, const char *key, const char *member);
 
+/* returns number of elements returned in vector `elementv' 
+ * TODO add support for WITHSCORES */
+int credis_zrange(REDIS rhnd, const char *key, int start, int end, char ***elementv);
+
+/* returns number of elements returned in vector `elementv' 
+ * TODO add support for WITHSCORES */
+int credis_zrevrange(REDIS rhnd, const char *key, int start, int end, char ***elementv);
+
+/* returns cardinality or -1 if `key' does not exist */
+int credis_zcard(REDIS rhnd, const char *key);
+
+/* returns -1 if the `key' does not exist or the `member' is not in the sorted set,
+ * score is returned in `score' */
+int credis_zscore(REDIS rhnd, const char *key, const char *member, double *score);
+
+/* returns number of elements removed or -1 if key does not exist */
+int credis_zremrangebyscore(REDIS rhnd, const char *key, double min, double max);
+
+/* returns number of elements removed or -1 if key does not exist */
+int credis_zremrangebyrank(REDIS rhnd, const char *key, int start, int end);
+
 /* TODO
- *
- * ZRANGE key start end Return a range of elements from the sorted set at key
- * ZREVRANGE key start end Return a range of elements from the sorted set at key, exactly like ZRANGE, but the sorted set is ordered in traversed in reverse order, from the greatest to the smallest score
  * ZRANGEBYSCORE key min max Return all the elements with score >= min and score <= max (a range query) from the sorted set
- * ZCARD key Return the cardinality (number of elements) of the sorted set at key
- * ZSCORE key element Return the score associated with the specified element of the sorted set at key
- * ZREMRANGEBYRANK key min max Remove all the elements with rank >= min and rank <= max from the sorted set
- * ZREMRANGEBYSCORE key min max Remove all the elements with score >= min and score <= max from the sorted set
  * ZUNIONSTORE / ZINTERSTORE dstkey N key1 ... keyN WEIGHTS w1 ... wN AGGREGATE SUM|MIN|MAX Perform a union or intersection over a number of sorted sets with optional weight and aggregate
  */
 

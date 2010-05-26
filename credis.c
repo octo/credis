@@ -756,7 +756,7 @@ static int cr_multikeybulkcommand(REDIS rhnd, const char *cmd, int keyc,
 }
 
 static int cr_multikeystorecommand(REDIS rhnd, const char *cmd, const char *destkey, 
-                            int keyc, const char **keyv)
+                                   int keyc, const char **keyv)
 {
   cr_buffer *buf = &(rhnd->buf);
   int rc;
@@ -1272,7 +1272,7 @@ int credis_zincrby(REDIS rhnd, const char *key, double incr_score, const char *m
   int rc = cr_sendfandreceive(rhnd, CR_INT, "ZINCRBY %s %f %s\r\n", 
                               key, incr_score, member);
 
-  if (rc == 0 && new_score != NULL)
+  if (rc == 0 && new_score)
     *new_score = rhnd->reply.integer;
 
   return rc;
@@ -1298,4 +1298,77 @@ int credis_zrank(REDIS rhnd, const char *key, const char *member)
 int credis_zrevrank(REDIS rhnd, const char *key, const char *member)
 {
   return cr_zrank(rhnd, 1, key, member);
+}
+
+int cr_zrange(REDIS rhnd, int reverse, const char *key, int start, int end, char ***elementv)
+{
+  int rc = cr_sendfandreceive(rhnd, CR_MULTIBULK, "%s %s %d %d\r\n",
+                              reverse==1?"ZREVRANGE":"ZRANGE", key, start, end);
+
+  if (rc == 0) {
+    *elementv = rhnd->reply.multibulk.bulks;
+    rc = rhnd->reply.multibulk.len;
+  }
+
+  return rc;
+}
+
+int credis_zrange(REDIS rhnd, const char *key, int start, int end, char ***elementv)
+{
+  return cr_zrange(rhnd, 0, key, start, end, elementv);
+}
+
+int credis_zrevrange(REDIS rhnd, const char *key, int start, int end, char ***elementv)
+{
+  return cr_zrange(rhnd, 1, key, start, end, elementv);
+}
+
+int credis_zcard(REDIS rhnd, const char *key)
+{
+  int rc = cr_sendfandreceive(rhnd, CR_INT, "ZCARD %s\r\n", key);
+
+  if (rc == 0) {
+    if (rhnd->reply.integer == 0)
+      rc = -1;
+    else
+      rc = rhnd->reply.integer;
+  }
+
+  return rc;
+}
+
+int credis_zscore(REDIS rhnd, const char *key, const char *member, double *score)
+{
+  int rc = cr_sendfandreceive(rhnd, CR_BULK, "ZSCORE %s %s\r\n", key, member);
+
+  if (rc == 0) {
+    if (!strncmp(rhnd->reply.bulk, "nil", 3))
+      rc = -1;
+    else if (score)
+      *score = strtod(rhnd->reply.bulk, NULL);
+  }
+
+  return rc;
+}
+
+int credis_zremrangebyscore(REDIS rhnd, const char *key, double min, double max)
+{
+  int rc = cr_sendfandreceive(rhnd, CR_INT, "ZREMRANGEBYSCORE %s %f %f\r\n", 
+                              key, min, max);
+
+  if (rc == 0)
+    rc = rhnd->reply.integer;
+
+  return rc;
+}
+
+int credis_zremrangebyrank(REDIS rhnd, const char *key, int start, int end)
+{
+  int rc = cr_sendfandreceive(rhnd, CR_INT, "ZREMRANGEBYRANK %s %d %d\r\n", 
+                              key, start, end);
+
+  if (rc == 0)
+    rc = rhnd->reply.integer;
+
+  return rc;
 }

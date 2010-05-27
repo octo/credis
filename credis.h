@@ -142,6 +142,9 @@ int credis_auth(REDIS rhnd, const char *password);
 
 int credis_ping(REDIS rhnd);
 
+/* if a function call returns error it is _possible_ that the Redis server
+ * replied with an error message. It is returned by this function. */
+char* credis_errorreply(REDIS rhnd);
 
 /* 
  * Commands operating on all the kind of values

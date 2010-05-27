@@ -77,6 +77,7 @@ int main(int argc, char **argv) {
   char *val, **valv, lstr[50000];
   const char *keyv[] = {"kalle", "adam", "unknown", "bertil", "none"};
   int rc, keyc=5, i;
+  double score1, score2;
 
   if (argc == 2) {
     int i;
@@ -300,6 +301,30 @@ int main(int argc, char **argv) {
       printf("  %02d: %s\n", i, valv[i]);
   rc = credis_lrem(redis, "cars", 1, "volvo");
 
+
+
+  printf("\n\n************* sorted sets ********************************** \n");
+
+  score1 = 3.5;
+  rc = credis_zincrby(redis, "zkey", score1, "member1", &score2);
+  printf("zincrby returned: %d, score=%f, new_score=%f\n", rc, score1, score2);
+  rc = credis_zincrby(redis, "zkey", score1, "member1", &score2);
+  printf("zincrby returned: %d, score=%f, new_score=%f\n", rc, score1, score2);
+  score2 = 123;
+  rc = credis_zscore(redis, "zkey", "member1", &score2);
+  printf("zscore returned: %d, score=%f\n", rc, score2);
+  rc = credis_zscore(redis, "zkey_unknown", "member1", &score2);
+  printf("zscore (unknown key) returned: %d, score=%f\n", rc, score2);
+  rc = credis_zscore(redis, "zkey", "member_unknown", &score2);
+  printf("zscore (unknown member) returned: %d, score=%f\n", rc, score2);
+
+  rc = credis_zrank(redis, "zkey", "member1");
+  printf("zrank returned: %d\n", rc);
+  rc = credis_zrevrank(redis, "zkey", "member1");
+  printf("zrevrank returned: %d\n", rc);
+  if (rc < 0)
+    printf("Error message: %s\n", credis_errorreply(redis));
+ 
   credis_close(redis);
 
   return 0;

@@ -587,6 +587,11 @@ static int cr_sendfandreceive(REDIS rhnd, char recvtype, const char *format, ...
   return cr_sendandreceive(rhnd, recvtype);
 }
 
+char * credis_errorreply(REDIS rhnd)
+{
+  return rhnd->reply.line;
+}
+
 void credis_close(REDIS rhnd)
 {
   if (rhnd) {
@@ -1267,8 +1272,8 @@ int credis_smembers(REDIS rhnd, const char *key, char ***members)
 
 int credis_zadd(REDIS rhnd, const char *key, double score, const char *member)
 {
-  int rc = cr_sendfandreceive(rhnd, CR_INT, "ZADD %s %f %s\r\n", 
-                              key, score, member);
+  int rc = cr_sendfandreceive(rhnd, CR_INT, "ZADD %s %f %d\r\n%s\r\n", 
+                              key, score, strlen(member), member);
 
   if (rc == 0 && rhnd->reply.integer == 0)
     rc = -1;
@@ -1278,8 +1283,8 @@ int credis_zadd(REDIS rhnd, const char *key, double score, const char *member)
 
 int credis_zrem(REDIS rhnd, const char *key, const char *member)
 {
-  int rc = cr_sendfandreceive(rhnd, CR_INT, "ZREM %s %s\r\n", 
-                              key, member);
+  int rc = cr_sendfandreceive(rhnd, CR_INT, "ZREM %s %d\r\n%s\r\n", 
+                              key, strlen(member), member);
 
   if (rc == 0 && rhnd->reply.integer == 0)
     rc = -1;
@@ -1287,24 +1292,23 @@ int credis_zrem(REDIS rhnd, const char *key, const char *member)
   return rc;
 }
 
-/* TODO Redis command reference says integer reply even though score is double */
 /* TODO what does Redis return if member is not member of set? */
 int credis_zincrby(REDIS rhnd, const char *key, double incr_score, const char *member, double *new_score)
 {
-  int rc = cr_sendfandreceive(rhnd, CR_INT, "ZINCRBY %s %f %s\r\n", 
-                              key, incr_score, member);
+  int rc = cr_sendfandreceive(rhnd, CR_BULK, "ZINCRBY %s %f %d\r\n%s\r\n", 
+                              key, incr_score, strlen(member), member);
 
   if (rc == 0 && new_score)
-    *new_score = rhnd->reply.integer;
+    *new_score = strtod(rhnd->reply.bulk, NULL);
 
   return rc;
 }
 
 /* TODO what does Redis return if member is not member of set? */
-int cr_zrank(REDIS rhnd, int reverse, const char *key, const char *member)
+static int cr_zrank(REDIS rhnd, int reverse, const char *key, const char *member)
 {
-  int rc = cr_sendfandreceive(rhnd, CR_BULK, "%s %s %s\r\n", 
-                              reverse==1?"ZREVRANK":"ZRANK", key, member);
+  int rc = cr_sendfandreceive(rhnd, CR_BULK, "%s %s %d\r\n%s\r\n", 
+                              reverse==1?"ZREVRANK":"ZRANK", key, strlen(member), member);
 
   if (rc == 0)
     rc = atoi(rhnd->reply.bulk);
@@ -1361,10 +1365,11 @@ int credis_zcard(REDIS rhnd, const char *key)
 
 int credis_zscore(REDIS rhnd, const char *key, const char *member, double *score)
 {
-  int rc = cr_sendfandreceive(rhnd, CR_BULK, "ZSCORE %s %s\r\n", key, member);
+  int rc = cr_sendfandreceive(rhnd, CR_BULK, "ZSCORE %s %d\r\n%s\r\n", 
+                              key, strlen(member), member);
 
   if (rc == 0) {
-    if (!strncmp(rhnd->reply.bulk, "nil", 3))
+    if (!rhnd->reply.bulk)
       rc = -1;
     else if (score)
       *score = strtod(rhnd->reply.bulk, NULL);

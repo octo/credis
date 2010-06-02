@@ -94,6 +94,13 @@ typedef struct _cr_redis* REDIS;
 #define CREDIS_SERVER_MASTER 1
 #define CREDIS_SERVER_SLAVE 2
 
+typedef enum _cr_aggregate {
+  NONE,
+  SUM, 
+  MIN,
+  MAX
+} REDIS_AGGREGATE;
+
 #define CREDIS_VERSION_STRING_SIZE 32
 #define CREDIS_MULTIPLEXING_API_SIZE 16
 #define CREDIS_USED_MEMORY_HUMAN_SIZE 32
@@ -369,9 +376,17 @@ int credis_zremrangebyrank(REDIS rhnd, const char *key, int start, int end);
 
 /* TODO
  * ZRANGEBYSCORE key min max Return all the elements with score >= min and score <= max (a range query) from the sorted set
- * ZUNIONSTORE / ZINTERSTORE dstkey N key1 ... keyN WEIGHTS w1 ... wN AGGREGATE SUM|MIN|MAX Perform a union or intersection over a number of sorted sets with optional weight and aggregate
  */
 
+/* `keyc' is the number of keys stored in `keyv'. `weightv' is optional, if not 
+ * NULL, `keyc' is also the number of weights stored in `weightv'. */
+int credis_zinterstore(REDIS rhnd, const char *destkey, int keyc, const char **keyv, 
+                       const int *weightv, REDIS_AGGREGATE aggregate);
+
+/* `keyc' is the number of keys stored in `keyv'. `weightv' is optional, if not 
+ * NULL, `keyc' is also the number of weights stored in `weightv'. */
+int credis_zunionstore(REDIS rhnd, const char *destkey, int keyc, const char **keyv, 
+                       const int *weightv, REDIS_AGGREGATE aggregate);
 
 /* 
  * Commands operating on hashes

@@ -212,6 +212,39 @@ static int cr_splitstrtromultibulk(REDIS rhnd, char *str, const char token)
   return 0;
 }
 
+/* Appends a printf style formatted to the end of buffer `buf'. If available
+ * memory in buffer is not enough to hold `str' more memory is allocated to 
+ * the buffer. 
+ * Returns:
+ *   0  on success
+ *  <0  on error, i.e. more memory not available */
+static int cr_appendstrf(cr_buffer *buf, const char *format, ...)
+{
+  int rc, avail;
+  va_list ap;
+
+  avail = buf->size - buf->len;
+
+  va_start(ap, format);
+  rc = vsnprintf(buf->data + buf->len, avail, format, ap);
+  va_end(ap);
+
+  if (rc < 0)
+    return -1;
+
+  if (rc >= avail) {
+    if (cr_moremem(buf, rc - avail + 1))
+      return CREDIS_ERR_NOMEM;
+
+    va_start(ap, format);
+    rc = vsnprintf(buf->data + buf->len, buf->size - buf->len, format, ap);
+    va_end(ap);
+  }
+  buf->len += rc;
+
+  return 0;
+}
+
 /* Appends a zero-terminated string `str' to the end of buffer `buf'. If 
  * available memory in buffer is not enough to hold `str' more memory is 
  * allocated to the buffer. If `space' is not 0 `str' is padded with a space.
@@ -742,7 +775,7 @@ int credis_auth(REDIS rhnd, const char *password)
 }
 
 static int cr_multikeybulkcommand(REDIS rhnd, const char *cmd, int keyc, 
-                           const char **keyv, char ***valv)
+                                  const char **keyv, char ***valv)
 {
   cr_buffer *buf = &(rhnd->buf);
   int rc;
@@ -1398,4 +1431,60 @@ int credis_zremrangebyrank(REDIS rhnd, const char *key, int start, int end)
     rc = rhnd->reply.integer;
 
   return rc;
+}
+
+/* TODO add writev() support instead and push strings to send onto a vector of
+ * strings to send instead... */
+static int cr_zstore(REDIS rhnd, int inter, const char *destkey, int keyc, const char **keyv, 
+                     const int *weightv, REDIS_AGGREGATE aggregate)
+{
+  cr_buffer *buf = &(rhnd->buf);
+  int rc, i;
+
+  buf->len = 0;
+  
+  if ((rc = cr_appendstrf(buf, "%s %s %d ", inter?"ZINTERSTORE":"ZUNIONSTORE", destkey, keyc)) != 0)
+    return rc;
+  if ((rc = cr_appendstrarray(buf, keyc, keyv, 0)) != 0)
+    return rc;
+  if (weightv != NULL)
+    for (i = 0; i < keyc; i++)
+      if ((rc = cr_appendstrf(buf, " %d", weightv[i])) != 0)
+        return rc;
+
+  switch (aggregate) {
+  case SUM: 
+    rc = cr_appendstr(buf, "AGGREGATE SUM", 0);
+    break;
+  case MIN:
+    rc = cr_appendstr(buf, "AGGREGATE MIN", 0);
+    break;
+  case MAX:
+    rc = cr_appendstr(buf, "AGGREGATE MAX", 0);
+    break;
+  case NONE:
+    ; /* avoiding compiler warning */
+  }
+  if (rc != 0)
+    return rc;
+
+  if ((rc = cr_appendstr(buf, "\r\n", 0)) != 0)
+    return rc;
+
+  if ((rc = cr_sendandreceive(rhnd, CR_INT)) == 0) 
+    rc = rhnd->reply.integer;
+
+  return rc;
+}
+
+int credis_zinterstore(REDIS rhnd, const char *destkey, int keyc, const char **keyv, 
+                       const int *weightv, REDIS_AGGREGATE aggregate)
+{
+  return cr_zstore(rhnd, 1, destkey, keyc, keyv, weightv, aggregate);
+}
+
+int credis_zunionstore(REDIS rhnd, const char *destkey, int keyc, const char **keyv, 
+                       const int *weightv, REDIS_AGGREGATE aggregate)
+{
+  return cr_zstore(rhnd, 0, destkey, keyc, keyv, weightv, aggregate);
 }

@@ -639,7 +639,7 @@ void credis_close(REDIS rhnd)
 
 REDIS credis_connect(const char *host, int port, int timeout)
 {
-  int fd, yes = 1, use_he = 0;
+  int fd, rc, flags, yes = 1, use_he = 0;
   struct sockaddr_in sa;  
   struct hostent *he;
   REDIS rhnd;
@@ -701,8 +701,38 @@ REDIS credis_connect(const char *host, int port, int timeout)
     memcpy(&sa.sin_addr, he->h_addr, sizeof(struct in_addr));
   } 
 
-  if (connect(fd, (struct sockaddr*)&sa, sizeof(sa)) == -1)
-    goto error;
+  /* connect with user specified timeout */
+
+  flags = fcntl(fd, F_GETFL);
+  if ((rc = fcntl(fd, F_SETFL, flags | O_NONBLOCK)) < 0) {
+    DEBUG("Setting socket non-blocking failed with: %d\n", rc);
+  }
+
+  if (connect(fd, (struct sockaddr *)&sa, sizeof(sa)) != 0) {
+    struct timeval tv;
+    fd_set fds;
+
+    if (errno != EINPROGRESS)
+      goto error;
+
+    tv.tv_sec = timeout/1000;
+    tv.tv_usec = (timeout%1000)*1000;
+    
+    FD_ZERO(&fds);
+    FD_SET(fd, &fds);
+    
+    rc = select(fd+1, NULL, &fds, NULL, &tv);
+    
+    if (rc > 0 && FD_ISSET(fd, &fds)) {
+      int err;
+      unsigned int len = sizeof(err);
+      if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) == -1 || err)
+        goto error;
+    }
+    else /* timeout (rc == 0) or select error */
+      goto error;
+  }
+  /* else connect completed immediately */
 
   strcpy(rhnd->ip, inet_ntoa(sa.sin_addr));
   rhnd->port = port;

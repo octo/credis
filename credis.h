@@ -137,9 +137,16 @@ typedef struct _cr_info {
  * Connection handling
  */
 
-/* setting host to NULL will use "localhost". setting port to 0 will use 
- * default port 6379 */
+/* `host' is the host to connect to, either as an host name or a IP address, 
+ * if set to NULL connection is made to "localhost". `port' is the TCP port 
+ * that Redis is listening to, set to 0 will use default port (6379). 
+ * `timeout' is the time in milliseconds to use as timeout, when connecting 
+ * to a Redis server and waiting for reply, it can be changed after a
+ * connection has been made using credis_settimeout() */
 REDIS credis_connect(const char *host, int port, int timeout);
+
+/* set Redis server reply `timeout' in millisecs */ 
+void credis_settimeout(REDIS rhnd, int timeout);
 
 void credis_close(REDIS rhnd);
 

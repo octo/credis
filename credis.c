@@ -301,6 +301,31 @@ static int cr_appendstrarray(cr_buffer *buf, int strc, const char **strv, int ne
   return 0;
 }
 
+/* Helper function for select that waits for `timeout' milliseconds 
+ * for `fd' to become readable (`readable' == 1) or writable.
+ * Returns:
+ *  >0  `fd' became readable or writable
+ *   0  timeout 
+ *  -1  on error */
+int cr_select(int fd, int timeout, int readable)
+{
+  struct timeval tv;
+  fd_set fds;
+
+  tv.tv_sec = timeout/1000;
+  tv.tv_usec = (timeout%1000)*1000;
+  
+  FD_ZERO(&fds);
+  FD_SET(fd, &fds);
+    
+  if (readable == 1)
+    return select(fd+1, &fds, NULL, NULL, &tv);    
+
+  return select(fd+1, NULL, &fds, NULL, &tv);
+}
+#define cr_selectreadable(fd, timeout) cr_select(fd, timeout, 1)
+#define cr_selectwritable(fd, timeout) cr_select(fd, timeout, 0)
+
 /* Receives at most `size' bytes from socket `fd' to `buf'. Times out after 
  * `msecs' milliseconds if no data has yet arrived.
  * Returns:
@@ -310,17 +335,7 @@ static int cr_appendstrarray(cr_buffer *buf, int strc, const char **strv, int ne
  *  -2  on timeout */
 static int cr_receivedata(int fd, unsigned int msecs, char *buf, int size)
 {
-  fd_set fds;
-  struct timeval tv;
-  int rc;
-
-  tv.tv_sec = msecs/1000;
-  tv.tv_usec = (msecs%1000)*1000;
-
-  FD_ZERO(&fds);
-  FD_SET(fd, &fds);
-
-  rc = select(fd+1, &fds, NULL, NULL, &tv);
+  int rc = cr_selectreadable(fd, msecs);
 
   if (rc > 0)
     return recv(fd, buf, size, 0);
@@ -709,27 +724,16 @@ REDIS credis_connect(const char *host, int port, int timeout)
   }
 
   if (connect(fd, (struct sockaddr *)&sa, sizeof(sa)) != 0) {
-    struct timeval tv;
-    fd_set fds;
-
     if (errno != EINPROGRESS)
       goto error;
 
-    tv.tv_sec = timeout/1000;
-    tv.tv_usec = (timeout%1000)*1000;
-    
-    FD_ZERO(&fds);
-    FD_SET(fd, &fds);
-    
-    rc = select(fd+1, NULL, &fds, NULL, &tv);
-    
-    if (rc > 0 && FD_ISSET(fd, &fds)) {
+    if (cr_selectwritable(fd, timeout) > 0) {
       int err;
       unsigned int len = sizeof(err);
       if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) == -1 || err)
         goto error;
     }
-    else /* timeout (rc == 0) or select error */
+    else /* timeout or select error */
       goto error;
   }
   /* else connect completed immediately */
@@ -765,6 +769,11 @@ error:
   cr_delete(rhnd);
 
   return NULL;
+}
+
+void credis_settimeout(REDIS rhnd, int timeout)
+{
+  rhnd->timeout = timeout;
 }
 
 int credis_set(REDIS rhnd, const char *key, const char *val)

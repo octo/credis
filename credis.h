@@ -452,9 +452,7 @@ int credis_lastsave(REDIS rhnd);
 
 int credis_shutdown(REDIS rhnd);
 
-/* TODO
- * BGREWRITEAOF Rewrite the append only file in background when it gets too big
- */
+int credis_bgrewriteaof(REDIS rhnd);
 
 
 /*

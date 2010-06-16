@@ -1186,6 +1186,11 @@ int credis_shutdown(REDIS rhnd)
   return cr_sendfandreceive(rhnd, CR_INLINE, "SHUTDOWN\r\n");
 }
 
+int credis_bgrewriteaof(REDIS rhnd)
+{
+  return cr_sendfandreceive(rhnd, CR_INLINE, "BGREWRITEAOF\r\n");
+}
+
 /* Parse Redis `info' string for a particular `field', storing its value to 
  * `storage' according to `format'.
  */

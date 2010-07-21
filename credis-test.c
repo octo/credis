@@ -72,12 +72,18 @@ void randomize()
 #define LONG_DATA 50000
 
 int main(int argc, char **argv) {
-  REDIS redis = credis_connect(NULL, 0, 10000);
+  REDIS redis;
   REDIS_INFO info;
   char *val, **valv, lstr[50000];
   const char *keyv[] = {"kalle", "adam", "unknown", "bertil", "none"};
   int rc, keyc=5, i;
   double score1, score2;
+
+  redis = credis_connect(NULL, 0, 10000);
+  if (redis == NULL) {
+    printf("Error connecting to Redis server. Please start server to run tests.\n");
+    exit(1);
+  }
 
   if (argc == 2) {
     int i;

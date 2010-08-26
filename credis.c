@@ -50,6 +50,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #include "credis.h"
 
@@ -618,7 +619,12 @@ static int cr_sendfandreceive(REDIS rhnd, char recvtype, const char *format, ...
 {
   int rc;
   va_list ap;
-  cr_buffer *buf = &(rhnd->buf);
+  cr_buffer *buf;
+
+  if ((rhnd == NULL) || (format == NULL))
+    return (-EINVAL);
+
+  buf = &(rhnd->buf);
 
   va_start(ap, format);
   rc = vsnprintf(buf->data, buf->size, format, ap);

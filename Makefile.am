@@ -7,13 +7,13 @@ AM_CFLAGS += -Wextra -g -O0
 endif
 endif
 
-include_HEADERS = credis.h
+include_HEADERS = credis.h credis_version.h
 lib_LTLIBRARIES = libcredis.la
 
 libcredis_la_LDFLAGS = -version-info @LIBCREDIS_CURRENT@:@LIBCREDIS_REVISION@:@LIBCREDIS_AGE@
 # Only export functions which start with "credis_".
 libcredis_la_LDFLAGS += -export-symbols-regex "^credis_"
-libcredis_la_SOURCES = credis.c credis.h
+libcredis_la_SOURCES = credis.c credis.h credis_version.h
 
 noinst_PROGRAMS = credis-test
 

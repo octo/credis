@@ -1545,3 +1545,16 @@ int credis_zunionstore(REDIS rhnd, const char *destkey, int keyc, const char **k
 {
   return cr_zstore(rhnd, 0, destkey, keyc, keyv, weightv, aggregate);
 }
+
+/*
+ * Runtime versioning functions
+ */
+int credis_version (void)
+{
+  return (CREDIS_VERSION);
+}
+
+const char *credis_version_string (void)
+{
+  return (CREDIS_VERSION_STRING);
+}

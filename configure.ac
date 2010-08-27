@@ -56,4 +56,4 @@ AC_ARG_ENABLE(debug, [AS_HELP_STRING([--enable-debug], [Enable debugging output.
 ], [])
 AM_CONDITIONAL(BUILD_WITH_DEBUG, test "x$enable_debug" = "xyes")
 
-AC_OUTPUT(Makefile)
+AC_OUTPUT(Makefile credis_version.h)

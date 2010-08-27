@@ -31,6 +31,8 @@
 #ifndef __CREDIS_H
 #define __CREDIS_H
 
+#include "credis_version.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif

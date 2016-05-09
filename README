@@ -12,6 +12,12 @@ straightforward.
 To build credis-test and credis shared and static libraries simply 
 unpack and run: 
 
+  libtoolize --force
+  aclocal
+  autoheader
+  automake --force-missing --add-missing
+  autoconf
+  ./configure
   make
 
 To run through a number of credis tests run (presupposed that a 
